@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-slice-assistant"
+version = "0.4.0"
+description = "本地视频可恢复粗剪、局部证据与可编辑字幕包装导出工具"
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6>=6.11,<6.12",
+]
+
+[project.scripts]
+local-slice-assistant = "local_slice_assistant.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
