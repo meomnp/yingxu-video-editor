@@ -81,7 +81,9 @@ if [[ "$TARGET" == windows ]]; then
   # Run inside MSYS2 UCRT64 so both configure scripts detect the native
   # MinGW-w64 toolchain. Static-link its runtime into the standalone tools.
   FFMPEG_CONFIGURE+=(--extra-ldexeflags=-static)
-  FONTFILE="/c/Windows/Fonts/arial.ttf"
+  # The FFmpeg binary is a native Windows executable. Passing an MSYS path
+  # through its filter parser leaves it as /c/... instead of a usable path.
+  FONTFILE="$(cygpath -am /c/Windows/Fonts/arial.ttf)"
 else
   X264_CONFIGURE+=(--enable-pic)
   FONTFILE="/System/Library/Fonts/Supplemental/Arial.ttf"
