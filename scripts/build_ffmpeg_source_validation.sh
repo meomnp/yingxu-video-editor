@@ -89,7 +89,10 @@ fi
 test -f "$FONTFILE"
 
 FREETYPE_BUILD="$BUILD_ROOT/freetype-build"
-FREETYPE_CMAKE_ARGS=()
+FREETYPE_CMAKE_ARGS=(
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+  "-DCMAKE_C_FLAGS=-I$FREETYPE_SOURCE/include"
+)
 if [[ "$TARGET" == windows ]]; then
   # CMake launched from MSYS can report the host as MSYS/UNIX even though the
   # selected compiler targets native Windows. Tell FreeType to use its Win32
@@ -99,7 +102,6 @@ fi
 cmake -S "$FREETYPE_SOURCE" -B "$FREETYPE_BUILD" \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
   -DBUILD_SHARED_LIBS=OFF \
-  -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DFT_DISABLE_ZLIB=TRUE \
   -DFT_DISABLE_BZIP2=TRUE \
   -DFT_DISABLE_PNG=TRUE \
