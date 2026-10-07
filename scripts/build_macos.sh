@@ -84,7 +84,7 @@ This macOS test candidate bundles FFmpeg and ffprobe from Homebrew as separate l
 NOTICES
 {
   echo "映序 macOS 便携测试候选版"
-  echo "架构：$ARCH；未签名、未公证。此包是在 GitHub macOS runner 上构建，维护者没有 Mac 电脑，尚未进行实机验收。"
+  echo "架构：${ARCH}；未签名、未公证。此包是在 GitHub macOS runner 上构建，维护者没有 Mac 电脑，尚未进行实机验收。"
   echo "首次打开如被 Gatekeeper 拦截，可在系统设置→隐私与安全性中查看允许打开选项；不要关闭系统安全保护。"
   echo "欢迎反馈 bug；请附 Mac 型号、macOS 版本、复现步骤和脱敏报错。"
   echo "注意：随包 FFmpeg 的确切源码与再分发材料仍在核验。本候选版仅供测试，核验完成前请勿公开转发。"
