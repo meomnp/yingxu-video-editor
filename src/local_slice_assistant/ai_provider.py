@@ -177,6 +177,10 @@ def _payload(config: ProviderConfig, messages: Sequence[Mapping[str, str]]) -> b
     # provider-specific field to other OpenAI-compatible services.
     if deepseek:
         request["thinking"] = {"type": "disabled"}
+        # DeepSeek documents an 8K default for non-thinking requests when
+        # max_tokens is omitted. Explicitly send the non-thinking effort too,
+        # so newer model routes cannot silently fall back to reasoning mode.
+        request["reasoning_effort"] = "none"
     try:
         body = json.dumps(request, ensure_ascii=False).encode("utf-8")
     except (UnicodeError, ValueError):

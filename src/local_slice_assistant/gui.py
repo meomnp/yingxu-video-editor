@@ -1444,7 +1444,8 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         self.refresh()
         self._set_status(
             f"已按文件名顺序载入 {len(document.sources)} 个视频；旧版‘映序项目’目录里的成片已排除。"
-            "新批次会建在素材文件夹旁边；可分割、删除、拖动重排和补衔接，原视频只读。"
+            f"工程默认保存在素材文件夹同级的“映序项目”目录：{default_project_path(document.media_root, document.drama)}。"
+            "新批次和导出也在该同级目录，不写回素材文件夹；可分割、删除、拖动重排和补衔接，原视频只读。"
         )
 
     def import_video_dialog(self) -> None:
@@ -1643,7 +1644,8 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         self.root_label.setText(document.media_root)
         self.refresh()
         self._set_status(
-            "现成视频已作为一条完整切片载入；可预览、导入对应台词、配音包装并保存工程。原视频不会被修改。"
+            f"现成视频已作为一条完整切片载入；工程默认保存在视频文件夹同级的“映序项目”目录：{self.project_path}。"
+            "可预览、导入对应台词、配音包装并保存工程；原视频不会被修改。"
         )
 
     def select_media_root(self) -> None:

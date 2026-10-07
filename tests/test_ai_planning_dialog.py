@@ -170,8 +170,10 @@ class ApiPlanningDialogTests(unittest.TestCase):
 
     def test_two_explicit_requests_validate_narration_then_review(self):
         calls = []
+        configs = []
         def provider(config, messages, *, cancel_event):
             calls.append(messages)
+            configs.append(config)
             if len(calls) == 1:
                 return "# 设计稿\n先钩子再补前因。解说从成片1秒开始。"
             raw = standard_manifest()
@@ -191,6 +193,7 @@ class ApiPlanningDialogTests(unittest.TestCase):
             self.dialog.submit("plan")
             self.wait(lambda: self.dialog.worker is None)
         self.assertEqual(len(calls), 2)
+        self.assertEqual([config.max_output_tokens for config in configs], [393216, 393216])
         self.assertIn("我的修订", calls[1][2]["content"])
         self.assertNotIn("unit-test-secret", json.dumps(calls))
         self.assertIsNotNone(self.dialog.candidate, self.dialog.status.text())

@@ -151,12 +151,14 @@ class ProviderRequestTests(unittest.TestCase):
         payload = json.loads(_payload(config, MESSAGES))
         self.assertEqual(payload["max_tokens"], 393216)
         self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertEqual(payload["reasoning_effort"], "none")
 
     def test_deepseek_disables_thinking_and_uses_configured_output_cap(self):
         config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key",
                                 max_output_tokens=393216)
         payload = json.loads(_payload(config, MESSAGES))
         self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertEqual(payload["reasoning_effort"], "none")
         self.assertEqual(payload["max_tokens"], 393216)
 
     def test_deepseek_rejects_values_above_its_official_output_maximum(self):
