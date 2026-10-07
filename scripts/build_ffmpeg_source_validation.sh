@@ -14,6 +14,7 @@ esac
 FFMPEG_REVISION="bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa"
 X264_REVISION="0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee"
 FREETYPE_REVISION="0a0221a1347e2f1e07c395263540026e9a0aa7c7"
+HARFBUZZ_REVISION="7497c4147469fd4102a7229222586ad5c743c5a1"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="${YINGXU_FFMPEG_BUILD_ROOT:-$ROOT/build/ffmpeg-source-validation/$TARGET}"
 SOURCE_ROOT="$BUILD_ROOT/sources"
@@ -21,6 +22,7 @@ PREFIX="$BUILD_ROOT/install"
 FFMPEG_SOURCE="$SOURCE_ROOT/FFmpeg"
 X264_SOURCE="$SOURCE_ROOT/x264"
 FREETYPE_SOURCE="$SOURCE_ROOT/freetype"
+HARFBUZZ_SOURCE="$SOURCE_ROOT/harfbuzz"
 
 mkdir -p "$SOURCE_ROOT" "$PREFIX"
 
@@ -45,6 +47,7 @@ fetch_revision() {
 fetch_revision https://github.com/FFmpeg/FFmpeg.git "$FFMPEG_REVISION" "$FFMPEG_SOURCE"
 fetch_revision https://code.videolan.org/videolan/x264.git "$X264_REVISION" "$X264_SOURCE"
 fetch_revision https://github.com/freetype/freetype.git "$FREETYPE_REVISION" "$FREETYPE_SOURCE"
+fetch_revision https://github.com/harfbuzz/harfbuzz.git "$HARFBUZZ_REVISION" "$HARFBUZZ_SOURCE"
 
 JOBS="${YINGXU_BUILD_JOBS:-}"
 if [[ -z "$JOBS" ]]; then
@@ -63,6 +66,7 @@ FFMPEG_CONFIGURE=(
   --enable-gpl
   --enable-libx264
   --enable-libfreetype
+  --enable-libharfbuzz
   --enable-static
   --disable-shared
   --disable-autodetect
@@ -105,6 +109,26 @@ cmake -S "$FREETYPE_SOURCE" -B "$FREETYPE_BUILD" \
   "${FREETYPE_CMAKE_ARGS[@]}"
 cmake --build "$FREETYPE_BUILD" --target install --parallel "$JOBS"
 
+HARFBUZZ_BUILD="$BUILD_ROOT/harfbuzz-build"
+meson setup "$HARFBUZZ_BUILD" "$HARFBUZZ_SOURCE" \
+  --prefix="$PREFIX" \
+  --libdir=lib \
+  --default-library=static \
+  --wrap-mode=nofallback \
+  -Dtests=disabled \
+  -Dutilities=disabled \
+  -Ddocs=disabled \
+  -Dintrospection=disabled \
+  -Dglib=disabled \
+  -Dgobject=disabled \
+  -Dcairo=disabled \
+  -Dchafa=disabled \
+  -Dicu=disabled \
+  -Dgraphite2=disabled \
+  -Dfreetype=disabled
+meson compile -C "$HARFBUZZ_BUILD" --jobs "$JOBS"
+meson install -C "$HARFBUZZ_BUILD"
+
 (
   cd "$X264_SOURCE"
   ./configure "${X264_CONFIGURE[@]}"
@@ -143,4 +167,5 @@ test -x "$FFPROBE"
 printf 'FFmpeg source: https://github.com/FFmpeg/FFmpeg/commit/%s\n' "$FFMPEG_REVISION"
 printf 'x264 source: https://code.videolan.org/videolan/x264/-/commit/%s\n' "$X264_REVISION"
 printf 'FreeType source: https://github.com/freetype/freetype/commit/%s\n' "$FREETYPE_REVISION"
+printf 'HarfBuzz source: https://github.com/harfbuzz/harfbuzz/commit/%s\n' "$HARFBUZZ_REVISION"
 printf 'Target: %s; configure flags are recorded in this script.\n' "$TARGET"

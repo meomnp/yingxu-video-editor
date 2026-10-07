@@ -36,6 +36,8 @@ jobs:
             diffutils
             pkgconf
             cmake
+            meson
+            ninja
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-nasm
 
@@ -52,7 +54,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install NASM from the free runner package manager
-        run: brew install nasm cmake
+        run: brew install nasm cmake meson ninja
 
       - name: Build pinned FFmpeg + x264 + FreeType and run encode/filter/probe smoke test
         run: bash scripts/build_ffmpeg_source_validation.sh macos
