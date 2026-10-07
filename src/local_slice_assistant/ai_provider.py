@@ -83,7 +83,7 @@ class ProviderConfig:
             raise ProviderConfigurationError("超时必须是 0.1 到 600 秒之间的数字。")
         for value, ceiling in ((self.max_request_bytes, 16 * 1024 * 1024),
                                (self.max_response_bytes, 32 * 1024 * 1024),
-                               (self.max_output_tokens, 65536)):
+                               (self.max_output_tokens, 393216)):
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= ceiling:
                 raise ProviderConfigurationError("请求、响应或输出长度上限无效。")
 

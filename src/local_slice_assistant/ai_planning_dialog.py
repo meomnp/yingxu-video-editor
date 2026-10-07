@@ -1,6 +1,7 @@
 """Optional text-only provider workflow; never starts a request on opening."""
 from copy import deepcopy
 from datetime import datetime
+from math import ceil
 import json
 import os
 import re
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from .ai_provider import PartialCompletionError, ProviderConfig, request_completion, request_size_bytes
+from .api_costs import estimate_cost, estimate_input_tokens
 from .planning_capacity import capacity_summary
 from .manifest import import_planned_manifest
 from .plan_response import decode_plan_response
@@ -275,7 +277,11 @@ class ApiPlanningDialog(QDialog):
         form = QFormLayout(self.settings)
         form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
         self.base_url = QLineEdit("https://api.deepseek.com")
-        self.model = QLineEdit("deepseek-flash")
+        self.model = QComboBox()
+        self.model.setEditable(True)
+        self.model.addItems(("deepseek-flash", "deepseek-v4-pro"))
+        self.model.setCurrentText("deepseek-flash")
+        self.model.setToolTip("可选 DeepSeek 官方模型，或直接输入其他兼容服务商的模型 ID；服务商地址仍可手动填写。")
         self.key = QLineEdit()
         self.key.setEchoMode(QLineEdit.EchoMode.Password)
         self.key.setPlaceholderText("仅本窗口内使用，关闭后清空，不保存到工程")
@@ -298,7 +304,7 @@ class ApiPlanningDialog(QDialog):
         form.addRow("剪辑目标", self.objective)
         form.addRow("本次 API 切片条数（最多 2）", self.cut_count)
         form.addRow(self.narration)
-        note = QLabel("实验功能，暂未完善，真实模型输出尚不稳定。API试跑每次最多设计2条，发送前会同步检查任务包目标。DeepSeek 官方接口会明确关闭默认思考模式，避免输出额度被内部思考占满；其他兼容接口不发送该专属参数。减少条数会减少预期输出，但本批全部素材台词仍会发送；想少发输入，需另建少量素材的工程。不发送视频、音频或本地绝对路径。可能计费；密钥不写日志或配置。教程演示建议使用网页 / 其他 AI 任务包流程。")
+        note = QLabel("实验功能，暂未完善，真实模型输出尚不稳定。API试跑每次最多设计2条，发送前会同步检查任务包目标。DeepSeek 官方接口会关闭默认思考模式，并按官方模型上限设置 max_tokens（384K），不再被本工具固定截在8K。384K只是最大允许输出，不是固定生成量或固定费用；模型通常会在完成任务后停止，但过长回复仍可能增加费用。发送确认会附 DeepSeek 费用粗估，高峰/低谷分别展示，按输入未命中缓存估算；输出参考本机历史，可能高估或低估。其他兼容 API 可手动填写地址和模型，但费率及输出限制请以服务商为准。不发送视频、音频或本地绝对路径。密钥不写日志或配置。")
         note.setWordWrap(True)
         form.addRow(note)
         self.preview_button = QPushButton("查看即将发送的内容")
@@ -341,8 +347,9 @@ class ApiPlanningDialog(QDialog):
         self.use_button.clicked.connect(self.accept)
         self.stop_button.clicked.connect(self.stop)
         self.close_button.clicked.connect(self.reject)
-        for edit in (self.base_url, self.model, self.key):
+        for edit in (self.base_url, self.key):
             edit.textChanged.connect(self.invalidate_candidate)
+        self.model.currentTextChanged.connect(self.invalidate_candidate)
         self.objective.textChanged.connect(self.invalidate_package)
         self.cut_count.valueChanged.connect(self.invalidate_package)
         self.narration.toggled.connect(self.invalidate_package)
@@ -579,15 +586,23 @@ class ApiPlanningDialog(QDialog):
         if self.worker is not None or not self.prepare_payload():
             return
         try:
-            config = ProviderConfig(base_url=self.base_url.text().strip(), model=self.model.text().strip(), api_key=self.key.text().strip())
+            base_url = self.base_url.text().strip()
+            is_deepseek = (urlsplit(base_url).hostname or "").lower() == "api.deepseek.com"
+            config = ProviderConfig(base_url=base_url, model=self.model.currentText().strip(),
+                                    api_key=self.key.text().strip(),
+                                    max_output_tokens=393216 if is_deepseek else 8192)
             messages = self.request_messages(stage)
             self.payload.setPlainText(json.dumps(messages, ensure_ascii=False, indent=2))
             summary = capacity_summary(self.package, messages)
+            cost_note = self._deepseek_cost_note(messages, config.model, stage) if is_deepseek else (
+                "\n自定义服务商：无法从本机推断其单价；请按服务商价格页核对。"
+            )
             self.capacity.setText(
-                f"{summary}\n本次要求输出 {self.package['requested_cut_counts']['total']} 条；映序单次输出上限：{config.max_output_tokens:,} tokens（这是工具设置，不是模型官方最大值）。"
+                f"{summary}\n本次要求输出 {self.package['requested_cut_counts']['total']} 条；请求 max_tokens={config.max_output_tokens:,}。"
                 + ("DeepSeek 思考模式：已关闭；输出额度用于返回剪辑设计正文。" if (urlsplit(config.base_url).hostname or "").lower() == "api.deepseek.com" else "")
                 + "每条设计长短不同，不能保证两条一定装得下；本 API 试跑入口最多允许 2 条。"
                 "减少目标条数不会减少本批输入：当前所选的全部视频台词仍会发送。想缩小输入，请另建只含少量素材的测试工程。"
+                + cost_note
             )
             size = request_size_bytes(config, messages)
         except Exception as exc:
@@ -597,7 +612,8 @@ class ApiPlanningDialog(QDialog):
             self, "确认发送至模型服务商",
             f"{'这是第二次独立 API 请求，会再次产生用量，可能另行计费。\n' if stage == 'plan' else '这是第一次 API 请求。\n'}"
             f"目标：{config.base_url}\n模型：{config.model}\n{summary}\n"
-            f"本次目标 {self.package['requested_cut_counts']['total']} 条；实际请求正文 {size:,} 字节；输出上限 {config.max_output_tokens:,} tokens。\n"
+            f"本次目标 {self.package['requested_cut_counts']['total']} 条；实际请求正文 {size:,} 字节；max_tokens={config.max_output_tokens:,}。\n"
+            f"{cost_note}\n"
             f"思考模式：{'关闭（DeepSeek 官方接口专属设置）' if (urlsplit(config.base_url).hostname or '').lower() == 'api.deepseek.com' else '由服务商默认设置'}。\n"
             "内容已显示在“发送内容”；上下文限制以服务商为准。\n"
             "包含文件名和台词，可能计费。不上传视频，不自动重试。\n是否发送这一次请求？",
@@ -684,7 +700,7 @@ class ApiPlanningDialog(QDialog):
         if reason == "length" and not content.strip() and isinstance(reasoning_tokens, int) and reasoning_tokens >= max_output:
             reason_note = f"；已确认：{reasoning_tokens:,} 个输出 token 全部用于模型内部思考，未留下可见设计正文（本工具上限 {max_output:,}）。"
         else:
-            reason_note = ("；可能达到本工具输出上限或模型上下文上限。"
+            reason_note = ("；可能达到本次 max_tokens 上限或模型上下文上限。"
                            if reason == "length" else "")
         if not content.strip():
             saved_note = "模型没有返回可恢复的正文；" + saved_note
@@ -710,6 +726,44 @@ class ApiPlanningDialog(QDialog):
             saved_file=saved_path.name if saved_path else "",
         )
 
+    def _deepseek_cost_note(self, messages, model, stage):
+        text = "\n".join(message["content"] for message in messages)
+        input_tokens = estimate_input_tokens(text)
+        matching = [entry for entry in self.api_history
+                    if entry.get("service") == "api.deepseek.com"
+                    and entry.get("model") == model
+                    and entry.get("source_count") == len(self.package.get("source_catalog", []))
+                    and entry.get("cue_count") == len(self.package.get("timestamped_transcript", []))]
+        if matching:
+            prior_usage = matching[-1].get("usage", {})
+            if isinstance(prior_usage, dict) and isinstance(prior_usage.get("prompt_tokens"), int):
+                input_tokens = prior_usage["prompt_tokens"]
+        output_per_cut = None
+        output_was_truncated = False
+        for entry in reversed(matching):
+            if entry.get("stage") != stage:
+                continue
+            prior_usage = entry.get("usage", {})
+            prior_cuts = entry.get("cut_count", 0)
+            if isinstance(prior_usage, dict) and isinstance(prior_usage.get("completion_tokens"), int) and isinstance(prior_cuts, int) and prior_cuts > 0:
+                output_per_cut = max(1, ceil(prior_usage["completion_tokens"] / prior_cuts))
+                output_was_truncated = entry.get("finish_reason") == "length"
+                break
+        targets = self.package["requested_cut_counts"]["total"]
+        if output_per_cut is None:
+            output_estimate = 8194 * targets
+            output_basis = f"输出暂按旧请求 8,194 tokens/条作粗略参考（{targets} 条）；没有完整成功历史，误差可能很大。"
+        else:
+            output_estimate = output_per_cut * targets
+            output_basis = f"输出参考本机同素材历史约 {output_per_cut:,} tokens/条，按 {targets} 条外推" + ("；该历史被截断，可能低估完整输出。" if output_was_truncated else "，不代表保证用量。")
+        idle, peak = estimate_cost(input_tokens, output_estimate, model)
+        ten_output = (output_per_cut or 8194) * 10
+        ten_idle, ten_peak = estimate_cost(input_tokens, ten_output, model)
+        return (f"\nDeepSeek {model} 费用粗估（人民币；按输入缓存未命中）：输入约 {input_tokens:,} tokens，"
+                f"{output_basis}当前约 ¥{idle:.2f}（低谷）/ ¥{peak:.2f}（高峰）。"
+                f"同一批素材假设一次做10条、输入只发一次，参考约 ¥{ten_idle:.2f}/¥{ten_peak:.2f}；"
+                "本工具目前每次最多2条，拆成多次请求会重复发送输入，费用会更高。实际按服务商 usage、缓存命中和当时价格结算；仅作决定前参考。")
+
     def _save_design_response(self, content):
         try:
             root = Path(self.document.media_root).resolve()
@@ -726,7 +780,7 @@ class ApiPlanningDialog(QDialog):
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             path = output_dir / f"{safe_drama}_API设计稿_{stamp}_{uuid4().hex[:8]}.md"
             with path.open("x", encoding="utf-8", newline="\n") as handle:
-                handle.write(f"# API 剪辑设计稿（完整回复；仍需人工审阅）\n\n- 模型：{self.model.text().strip()}\n- 保存时间：{datetime.now().isoformat(timespec='seconds')}\n- 状态：完整回复不等于剪辑完成或方案已导入\n\n---\n\n")
+                handle.write(f"# API 剪辑设计稿（完整回复；仍需人工审阅）\n\n- 模型：{self.model.currentText().strip()}\n- 保存时间：{datetime.now().isoformat(timespec='seconds')}\n- 状态：完整回复不等于剪辑完成或方案已导入\n\n---\n\n")
                 handle.write(content)
                 handle.write("\n")
             return path

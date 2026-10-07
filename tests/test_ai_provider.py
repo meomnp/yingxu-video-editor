@@ -16,6 +16,7 @@ from local_slice_assistant.ai_provider import (
     ProviderConfigurationError,
     ProviderError,
     ProviderTimeout,
+    _payload,
     completion_url,
     request_completion,
 )
@@ -138,13 +139,20 @@ class ProviderConfigTests(unittest.TestCase):
                           {"timeout_seconds": True}, {"timeout_seconds": 0}, {"timeout_seconds": 601},
                           {"model": ""}, {"model": "a\n"}, {"max_response_bytes": 0},
                           {"max_request_bytes": 20 * 1024 * 1024}, {"max_output_tokens": True},
-                          {"max_output_tokens": 65537}]:
+                          {"max_output_tokens": 393217}]:
             values = {"base_url": "https://example.com", "model": "m", "api_key": "secret", **overrides}
             with self.subTest(overrides=overrides), self.assertRaises(ProviderConfigurationError):
                 ProviderConfig(**values)
 
 
 class ProviderRequestTests(unittest.TestCase):
+    def test_deepseek_disables_thinking_and_uses_configured_output_cap(self):
+        config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key",
+                                max_output_tokens=393216)
+        payload = json.loads(_payload(config, MESSAGES))
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertEqual(payload["max_tokens"], 393216)
+
     def test_real_loopback_exact_text_contract_and_no_environment_proxy(self):
         with local_server() as (url, records, _), patch.dict("os.environ", {"HTTP_PROXY": "http://bad.invalid:3"}):
             result = request_completion(ProviderConfig(url + "/v1", "deepseek-flash", "local-test-key"), MESSAGES)
