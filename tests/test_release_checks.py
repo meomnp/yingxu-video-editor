@@ -32,6 +32,12 @@ class ReleaseFFmpegChecksTests(unittest.TestCase):
         with self.assertRaisesRegex(ReleaseCheckError, "windows 或 macos"):
             validate_ffmpeg_text("LGPL", "", "", "linux")
 
+    def test_disabled_gpl_in_banner_is_not_gpl_license(self):
+        validate_ffmpeg_text(
+            "configuration: --disable-gpl --disable-nonfree\nGNU Lesser General Public License",
+            "--disable-gpl --disable-nonfree --enable-libfreetype --enable-libharfbuzz --enable-videotoolbox",
+            "h264_videotoolbox", "macos")
+
 
 if __name__ == "__main__":
     unittest.main()
