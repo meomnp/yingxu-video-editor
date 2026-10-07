@@ -27,6 +27,7 @@ evidence/
 !README.md
 !THIRD_PARTY_NOTICES.md
 !docs/LOCAL_INTEGRATIONS.md
+!docs/FFmpeg-Windows-9.0.1-依赖清单.md
 *.txt
 !requirements.txt
 *.json
