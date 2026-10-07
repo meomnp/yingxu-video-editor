@@ -14,11 +14,10 @@ class ApiCostEstimateTests(unittest.TestCase):
         self.assertAlmostEqual(idle, 5.0)
         self.assertAlmostEqual(peak, 10.0)
 
-    def test_pro_rate_is_higher_than_flash(self):
+    def test_legacy_pro_alias_is_currently_billed_at_flash_rate(self):
         flash = estimate_cost(100_000, 10_000, "deepseek-flash")
         pro = estimate_cost(100_000, 10_000, "deepseek-v4-pro")
-        self.assertGreater(pro[0], flash[0])
-        self.assertGreater(pro[1], flash[1])
+        self.assertEqual(pro, flash)
 
 
 if __name__ == "__main__":

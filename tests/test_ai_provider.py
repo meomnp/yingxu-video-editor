@@ -139,7 +139,7 @@ class ProviderConfigTests(unittest.TestCase):
                           {"timeout_seconds": True}, {"timeout_seconds": 0}, {"timeout_seconds": 601},
                           {"model": ""}, {"model": "a\n"}, {"max_response_bytes": 0},
                           {"max_request_bytes": 20 * 1024 * 1024}, {"max_output_tokens": True},
-                          {"max_output_tokens": 393217}]:
+                          {"max_output_tokens": 0}]:
             values = {"base_url": "https://example.com", "model": "m", "api_key": "secret", **overrides}
             with self.subTest(overrides=overrides), self.assertRaises(ProviderConfigurationError):
                 ProviderConfig(**values)
@@ -159,7 +159,19 @@ class ProviderRequestTests(unittest.TestCase):
         self.assertEqual(payload["thinking"], {"type": "disabled"})
         self.assertEqual(payload["max_tokens"], 393216)
 
-    def test_real_loopback_exact_text_contract_and_no_environment_proxy(self):
+    def test_deepseek_rejects_values_above_its_official_output_maximum(self):
+        config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key",
+                                max_output_tokens=393217)
+        with self.assertRaisesRegex(ProviderConfigurationError, "384K"):
+            _payload(config, MESSAGES)
+
+    def test_other_providers_can_use_their_own_output_limits(self):
+        config = ProviderConfig("https://example.com", "chosen-model", "local-test-key",
+                                max_output_tokens=500000)
+        payload = json.loads(_payload(config, MESSAGES))
+        self.assertEqual(payload["max_tokens"], 500000)
+
+    def test_generic_compatible_provider_leaves_output_policy_to_provider(self):
         with local_server() as (url, records, _), patch.dict("os.environ", {"HTTP_PROXY": "http://bad.invalid:3"}):
             result = request_completion(ProviderConfig(url + "/v1", "deepseek-flash", "local-test-key"), MESSAGES)
         self.assertIn("第二集", result)
@@ -170,7 +182,7 @@ class ProviderRequestTests(unittest.TestCase):
         self.assertEqual(record["headers"]["Accept-Encoding"], "identity")
         payload = json.loads(record["body"])
         self.assertEqual(payload, {"model": "deepseek-flash", "messages": MESSAGES,
-                                   "stream": False, "max_tokens": 8192})
+                                   "stream": False})
         self.assertNotIn("local-test-key", record["body"].decode())
 
     def test_local_keyless_and_complete_endpoint(self):

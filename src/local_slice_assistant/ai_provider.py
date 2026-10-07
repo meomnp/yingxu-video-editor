@@ -65,8 +65,9 @@ class ProviderConfig:
     # max_tokens value (DeepSeek currently accepts 393,216). This is a local
     # transport safety ceiling, not a token-generation cap.
     max_response_bytes: int = 32 * 1024 * 1024
-    # None means use the provider's documented default policy: DeepSeek's
-    # current maximum, or 8K for generic OpenAI-compatible endpoints.
+    # None means use the provider's documented default policy. The official
+    # DeepSeek endpoint uses its documented maximum; generic compatible APIs
+    # receive no max_tokens field unless the caller explicitly sets one.
     max_output_tokens: int | None = None
 
     def __post_init__(self) -> None:
@@ -93,7 +94,7 @@ class ProviderConfig:
         if (self.max_output_tokens is not None
                 and (isinstance(self.max_output_tokens, bool)
                      or not isinstance(self.max_output_tokens, int)
-                     or not 1 <= self.max_output_tokens <= 393216)):
+                     or not 1 <= self.max_output_tokens <= 2**63 - 1)):
             raise ProviderConfigurationError("输出长度上限无效。")
 
 
@@ -162,11 +163,14 @@ def _payload(config: ProviderConfig, messages: Sequence[Mapping[str, str]]) -> b
             raise ProviderConfigurationError("分析消息必须包含非空纯文本。")
         copied.append({"role": message["role"], "content": message["content"]})
     deepseek = (urlsplit(config.base_url).hostname or "").lower() == "api.deepseek.com"
+    request = {"model": config.model, "messages": copied, "stream": False}
     output_limit = config.max_output_tokens
-    if output_limit is None:
-        output_limit = 393216 if deepseek else 8192
-    request = {"model": config.model, "messages": copied, "stream": False,
-               "max_tokens": output_limit}
+    if output_limit is None and deepseek:
+        output_limit = 393216  # DeepSeek documented maximum (384K).
+    if deepseek and output_limit is not None and output_limit > 393216:
+        raise ProviderConfigurationError("DeepSeek 的 max_tokens 不能超过官方 384K（393,216）最大值。")
+    if output_limit is not None:
+        request["max_tokens"] = output_limit
     # DeepSeek enables reasoning by default. In the failed requests all
     # completion tokens were reasoning_tokens and content was empty. Disable
     # reasoning only for the official DeepSeek endpoint; do not send this

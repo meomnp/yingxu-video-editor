@@ -7,7 +7,9 @@ import re
 
 _RATES = {
     "deepseek-flash": (1.0, 2.0, 4.0, 8.0),
-    "deepseek-v4-pro": (4.5, 9.0, 13.5, 27.0),
+    # As of 2026-10-07, official docs say deepseek-v4-pro requests are routed
+    # to V4.1-Flash until V4.1-Pro launches and billed at Flash rates.
+    "deepseek-v4-pro": (1.0, 2.0, 4.0, 8.0),
 }
 
 
