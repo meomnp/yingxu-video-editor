@@ -10,9 +10,9 @@ class ApiCostEstimateTests(unittest.TestCase):
         self.assertGreater(estimate_input_tokens("中文" * 100), 0)
 
     def test_flash_price_calculation_matches_documented_example(self):
-        idle, peak = estimate_cost(188943, 8194)
-        self.assertAlmostEqual(idle, 0.221719)
-        self.assertAlmostEqual(peak, 0.443438)
+        idle, peak = estimate_cost(1_000_000, 1_000_000)
+        self.assertAlmostEqual(idle, 5.0)
+        self.assertAlmostEqual(peak, 10.0)
 
     def test_pro_rate_is_higher_than_flash(self):
         flash = estimate_cost(100_000, 10_000, "deepseek-flash")

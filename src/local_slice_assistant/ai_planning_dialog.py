@@ -746,6 +746,7 @@ class ApiPlanningDialog(QDialog):
         matching = [entry for entry in self.api_history
                     if entry.get("service") == "api.deepseek.com"
                     and entry.get("model") == model
+                    and entry.get("stage") == stage
                     and entry.get("source_count") == len(self.package.get("source_catalog", []))
                     and entry.get("cue_count") == len(self.package.get("timestamped_transcript", []))]
         if matching:
@@ -755,8 +756,6 @@ class ApiPlanningDialog(QDialog):
         output_per_cut = None
         output_was_truncated = False
         for entry in reversed(matching):
-            if entry.get("stage") != stage:
-                continue
             prior_usage = entry.get("usage", {})
             prior_cuts = entry.get("cut_count", 0)
             if isinstance(prior_usage, dict) and isinstance(prior_usage.get("completion_tokens"), int) and isinstance(prior_cuts, int) and prior_cuts > 0:
@@ -765,17 +764,20 @@ class ApiPlanningDialog(QDialog):
                 break
         targets = self.package["requested_cut_counts"]["total"]
         if output_per_cut is None:
-            output_estimate = 8194 * targets
-            output_basis = f"输出暂按旧请求 8,194 tokens/条作粗略参考（{targets} 条）；没有完整成功历史，误差可能很大。"
+            output_estimate = 0
+            output_basis = "没有可用的同类完整历史，输出 token 数无法可靠预估；以下合计仅含输入部分。"
         else:
             output_estimate = output_per_cut * targets
             output_basis = f"输出参考本机同素材历史约 {output_per_cut:,} tokens/条，按 {targets} 条外推" + ("；该历史被截断，可能低估完整输出。" if output_was_truncated else "，不代表保证用量。")
         idle, peak = estimate_cost(input_tokens, output_estimate, model)
-        ten_output = (output_per_cut or 8194) * 10
+        ten_output = (output_per_cut or 0) * 10
         ten_idle, ten_peak = estimate_cost(input_tokens, ten_output, model)
+        output_unit_idle, output_unit_peak = estimate_cost(0, 10_000, model)
         return (f"\nDeepSeek {model} 费用粗估（人民币；按输入缓存未命中）：输入约 {input_tokens:,} tokens，"
                 f"{output_basis}当前约 ¥{idle:.2f}（低谷）/ ¥{peak:.2f}（高峰）。"
-                f"同一批素材假设一次做10条、输入只发一次，参考约 ¥{ten_idle:.2f}/¥{ten_peak:.2f}；"
+                f"同一批素材假设一次做10条、输入只发一次，参考约 ¥{ten_idle:.2f}/¥{ten_peak:.2f}"
+                + ("（此处只有输入费，输出费另计）。" if output_per_cut is None else "；")
+                + f"每万输出 tokens 另约 ¥{output_unit_idle:.2f}（低谷）/ ¥{output_unit_peak:.2f}（高峰）。"
                 "本工具目前每次最多2条，拆成多次请求会重复发送输入，费用会更高。实际按服务商 usage、缓存命中和当时价格结算；仅作决定前参考。"
                 "费率截至 2026-10-07，发送前可核对 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/。")
 
