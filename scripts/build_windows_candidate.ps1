@@ -69,13 +69,16 @@ try {
         "PyInstaller: $(& $python -m PyInstaller --version 2>&1)"
     ) -join "`r`n"
     Set-Content -LiteralPath (Join-Path $bundle 'BUILD_INFO.txt') -Value $buildInfo -Encoding utf8
-    $ffmpegInfo = @(
-        'Packaged FFmpeg build details',
-        'License declaration from ffmpeg -L:',
-        (& $ffmpeg -L 2>&1),
-        'Build configuration:',
-        (& $ffmpeg -buildconf 2>&1)
-    ) -join "`r`n"
+    $ffmpegLicense = (& $ffmpeg -L 2>&1 | Out-String).Trim()
+    $ffmpegBuild = (& $ffmpeg -buildconf 2>&1 | Out-String).Trim()
+    $ffmpegInfo = @"
+Packaged FFmpeg build details
+License declaration from ffmpeg -L:
+$ffmpegLicense
+
+Build configuration:
+$ffmpegBuild
+"@
     Set-Content -LiteralPath (Join-Path $bundle 'FFMPEG_BUILD_INFO.txt') -Value $ffmpegInfo -Encoding utf8
 
     $previousQtPlatform = $env:QT_QPA_PLATFORM
