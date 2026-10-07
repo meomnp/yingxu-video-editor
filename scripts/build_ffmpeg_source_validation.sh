@@ -112,6 +112,7 @@ cmake -S "$FREETYPE_SOURCE" -B "$FREETYPE_BUILD" \
 cmake --build "$FREETYPE_BUILD" --target install --parallel "$JOBS"
 
 HARFBUZZ_BUILD="$BUILD_ROOT/harfbuzz-build"
+export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 meson setup "$HARFBUZZ_BUILD" "$HARFBUZZ_SOURCE" \
   --prefix="$PREFIX" \
   --libdir=lib \
@@ -127,7 +128,7 @@ meson setup "$HARFBUZZ_BUILD" "$HARFBUZZ_SOURCE" \
   -Dchafa=disabled \
   -Dicu=disabled \
   -Dgraphite2=disabled \
-  -Dfreetype=disabled
+  -Dfreetype=enabled
 meson compile -C "$HARFBUZZ_BUILD" --jobs "$JOBS"
 meson install -C "$HARFBUZZ_BUILD"
 
@@ -138,7 +139,6 @@ meson install -C "$HARFBUZZ_BUILD"
   make install
 )
 
-export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 (
   cd "$FFMPEG_SOURCE"
   ./configure "${FFMPEG_CONFIGURE[@]}"
