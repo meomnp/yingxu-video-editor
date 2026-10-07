@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from .errors import ExportCancelled, ExportError
 from .ffmpeg import ffmpeg_binary, probe_media, run_ffmpeg
+from .video_encoding import video_encoding_options
 from .models import Cut, ProjectDocument
 from .packaging import map_audio_items, map_subtitle_events, normalize_packaging
 from .paths import is_within, resolve_excluded_dirs, resolve_media_root, safe_resolve_media_path
@@ -85,14 +86,26 @@ def _output_profile(document: ProjectDocument, cut: Cut, settings: ExportSetting
 
 def export_directory(media_root: str | Path) -> Path:
     root = resolve_media_root(media_root)
-    directory = root / "映序导出"
+    safe_root = _safe_filename(root.name) if root.name else "未命名素材"
+    project_parent = root.parent / "映序项目"
+    directory = project_parent / safe_root / "默认导出"
     try:
-        directory.mkdir(parents=True, exist_ok=True)
+        project_parent.mkdir(exist_ok=True)
+        resolved_project_parent = project_parent.resolve(strict=True)
+        if resolved_project_parent.parent != root.parent.resolve():
+            raise ExportError("项目目录不能通过链接离开素材文件夹的上级目录。")
+        project_root = project_parent / safe_root
+        project_root.mkdir(exist_ok=True)
+        resolved_project_root = project_root.resolve(strict=True)
+        if resolved_project_root.parent != resolved_project_parent:
+            raise ExportError("素材对应的项目目录不能通过链接离开‘映序项目’目录。")
+        directory = project_root / "默认导出"
+        directory.mkdir(exist_ok=True)
         resolved = directory.resolve(strict=True)
+        if resolved.parent != resolved_project_root:
+            raise ExportError("导出文件夹不能通过链接离开当前项目目录。")
     except OSError as exc:
         raise ExportError("无法创建导出文件夹。", detail=str(directory)) from exc
-    if not is_within(resolved, root):
-        raise ExportError("导出文件夹不能通过链接离开所选素材文件夹。")
     return resolved
 
 
@@ -806,16 +819,11 @@ def export_cut(
         "[aout]",
         "-t",
         _seconds(expected_duration_us),
-        "-c:v",
-        "libx264",
+        *video_encoding_options(crf=export_settings.crf, preset=export_settings.preset),
         "-threads:v",
         str(policy.cpu_threads),
         "-threads:a",
         "1",
-        "-preset",
-        export_settings.preset,
-        "-crf",
-        str(export_settings.crf),
         "-pix_fmt",
         "yuv420p",
         "-c:a",

@@ -1,5 +1,7 @@
 import os
 from copy import deepcopy
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -18,6 +20,13 @@ class PackagingRecoveryGuiTests(unittest.TestCase):
 
     def setUp(self):
         self.doc = caption_fixtures.CaptionSplitInheritanceTests().document()
+        # The shared caption fixture uses tempfile.gettempdir() itself as its
+        # media root. On hosts where AppData\Local is redirected, its parent
+        # is outside the resolved media tree and export_directory correctly
+        # refuses to write there. Give GUI tests an isolated D-drive media root.
+        build_root = Path(__file__).resolve().parents[1] / "build"
+        self._temporary_media = tempfile.TemporaryDirectory(dir=build_root)
+        self.doc.media_root = self._temporary_media.name
         self.cut = self.doc.active_cut
         self.window = MainWindow()
         self.window.document = self.doc
@@ -27,6 +36,7 @@ class PackagingRecoveryGuiTests(unittest.TestCase):
         self.window._set_project_baseline(saved=True)
         self.window.close()
         self.app.processEvents()
+        self._temporary_media.cleanup()
 
     def test_edit_text_preserves_detected_box_and_split_timing_without_double_offset(self):
         self.doc.split_segment(self.cut.id, 0, 4000000)

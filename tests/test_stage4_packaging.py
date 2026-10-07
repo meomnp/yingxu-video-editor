@@ -414,13 +414,20 @@ class Stage4PackagingTests(unittest.TestCase):
             self.assertEqual(len(map_subtitle_events(reopened.active_cut)), 2)
 
     def test_transparent_png_sticker_uses_event_box_and_disappears_on_gap(self) -> None:
-        """随附透明贴纸必须走真实 PNG 叠加路径，而非退回白色 drawbox。"""
+        """透明 PNG 贴纸必须走真实叠加路径，而非退回白色 drawbox。"""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "fixture.mp4"
             _make_fixture(source)
-            sticker = Path(__file__).resolve().parents[1] / "assets" / "stickers" / "仙侠浅玉金边_透明.png"
-            self.assertTrue(sticker.is_file())
+            from PySide6.QtGui import QColor, QImage, QPainter
+
+            sticker = root / "transparent-sticker.png"
+            image = QImage(80, 30, QImage.Format.Format_ARGB32)
+            image.fill(QColor(0, 0, 0, 0))
+            painter = QPainter(image)
+            painter.fillRect(0, 0, 80, 30, QColor(30, 210, 130, 255))
+            painter.end()
+            self.assertTrue(image.save(str(sticker), "PNG"))
             document = _imported_document(root, source)
             cut = document.active_cut
             packaging = default_packaging()

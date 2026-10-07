@@ -8,17 +8,18 @@ from threading import Thread
 from time import monotonic
 
 from .errors import LocalSliceError
+from .runtime_settings import runtime_setting
 
-VOICE_ROOT = Path(os.environ.get("LOCAL_SLICE_VOICE_ROOT", Path.home() / ".yingxu" / "voice"))
-VOICE_PYTHON = Path(os.environ.get("LOCAL_SLICE_VOICE_PYTHON", VOICE_ROOT / "runtime" / "Scripts" / "python.exe"))
-VOICE_CLI = Path(os.environ.get("LOCAL_SLICE_VOICE_CLI", VOICE_ROOT / "voice_bridge_cli.py"))
+VOICE_ROOT = Path(runtime_setting("LOCAL_SLICE_VOICE_ROOT", Path.home() / ".yingxu" / "voice"))
+VOICE_PYTHON = Path(runtime_setting("LOCAL_SLICE_VOICE_PYTHON", VOICE_ROOT / "runtime" / "Scripts" / "python.exe"))
+VOICE_CLI = Path(runtime_setting("LOCAL_SLICE_VOICE_CLI", VOICE_ROOT / "voice_bridge_cli.py"))
 # Never select or publish a machine owner's private voice profile by default.
-NARRATOR_ONE = "unconfigured"
+NARRATOR_ONE = runtime_setting("LOCAL_SLICE_VOICE_PROFILE_ID", "unconfigured")
 VOICE_EXCHANGE_CLI = VOICE_CLI.with_name("studio_exchange_cli.py")
 
 
 def default_voice_profile():
-    return dict(id=NARRATOR_ONE, name="未配置音色", review_scope="unverified",
+    return dict(id=NARRATOR_ONE, name=runtime_setting("LOCAL_SLICE_VOICE_PROFILE_NAME", "未配置音色"), review_scope="unverified",
                 review_label="未配置本地声音工具；请自行配置或导入音频")
 
 

@@ -71,7 +71,7 @@ from .errors import (
     ProjectSaveError,
     VisionCancelled,
 )
-from .exporter import ExportSettings, default_export_path, export_cut, next_available_export_path
+from .exporter import ExportSettings, default_export_path, export_cut, export_directory, next_available_export_path
 from .ffmpeg import probe_audio_duration
 from .manifest import create_project_from_folder, create_project_from_video, create_project_from_videos, import_manifest, import_planned_manifest
 from .models import ProjectDocument
@@ -303,7 +303,7 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         add_action(planning_menu, "1. 导入视频（可多选）", self.import_selected_videos_dialog)
         add_action(planning_menu, "导入已有台词", self.import_transcript_dialog)
         add_action(planning_menu, "A. 导出任务包（网页 / 其他 AI）", self.export_web_planning_package_dialog)
-        add_action(planning_menu, "B. API 分析（实验功能，暂未完善，可能计费）", self.api_planning_dialog)
+        add_action(planning_menu, "B. API 分析（会产生费用）", self.api_planning_dialog)
         add_action(
             planning_menu,
             "复制确认设计后的 JSON 提示词",
@@ -391,8 +391,8 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         self.next_step_button.clicked.connect(lambda: self.workflow_buttons[self._next_workflow_key].click())
         self._next_workflow_key = "videos"
         next_row.addWidget(self.next_step_button)
-        self.api_choice_button = QPushButton("或：API 分析（实验版）")
-        self.api_choice_button.setToolTip("实验功能，尚未完整验证；会将台词和剪辑目标发送给模型服务商，每次请求可能产生费用。教程演示建议优先使用外部 AI 任务包路线。")
+        self.api_choice_button = QPushButton("或：API 分析（会产生费用）")
+        self.api_choice_button.setToolTip("API 请求会将台词和剪辑目标发送给所选模型服务商并产生费用；不会上传视频、音频或本地绝对路径。")
         self.api_choice_button.clicked.connect(self.api_planning_dialog)
         self.api_choice_button.setVisible(False)
         next_row.addWidget(self.api_choice_button)
@@ -479,7 +479,7 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         material_actions.addWidget(self.undo_material_button)
         material_actions.addStretch()
         library.addLayout(material_actions)
-        local_note = QLabel("两条路线任选其一：网页 / 其他 AI → 导出任务包 → 导入方案；API（实验功能，暂未完善）→ 本地分析 → 确认后直接进入方案审阅，无需再手动导入文件。API 会发送台词与目标，可能计费；不上传视频。教程演示建议优先走外部 AI 任务包路线。")
+        local_note = QLabel("两条路线任选其一：网页 / 其他 AI → 导出任务包 → 导入方案；API → 本地分析 → 确认后直接进入方案审阅，无需再手动导入文件。API 会发送台词和剪辑目标给所选服务商并产生费用；不上传视频、音频或本地绝对路径。")
         label_role(local_note, 'muted')
         workflow_layout.addWidget(local_note)
         root_row = QHBoxLayout()
@@ -608,6 +608,7 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         self.preview_stack.addWidget(self.video)
         right_layout.addWidget(self.preview_stack, 1)
         self.player = QMediaPlayer(self)
+        self._native_player = self.player
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
         self.player.setVideoOutput(self.video)
@@ -809,7 +810,7 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         self.export_context_label.setWordWrap(True)
         label_role(self.export_context_label, 'section')
         layout.addWidget(self.export_context_label)
-        self.export_destination_label = QLabel("默认保存到素材文件夹下的“映序导出”。")
+        self.export_destination_label = QLabel("默认保存到素材文件夹同级的“映序项目\素材名\默认导出”。")
         self.export_destination_label.setWordWrap(True)
         label_role(self.export_destination_label, 'muted')
         layout.addWidget(self.export_destination_label)
@@ -1128,7 +1129,7 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
             f"总时长 {format_timecode_us(document.total_duration_us())}\n"
             "导出使用当前工程快照；原始视频始终只读。"
         )
-        destination = document.planning_context.get("export_directory") or str(Path(document.media_root) / "映序导出")
+        destination = document.planning_context.get("export_directory") or str(export_directory(document.media_root))
         self.export_destination_label.setText(f"输出位置：{destination}\n视频按01、02、03…编号；重名自动追加_2、_3，不覆盖旧视频。可更换位置或新建文件夹。")
         counts = f"素材 {len(document.sources)} 个 · 台词 {len(self._transcript_cues)} 条"
         if context.get("imported_plan"):
@@ -1290,6 +1291,14 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
                 )
                 event.ignore()
                 return
+        # Release the decoder's output references before Qt destroys the window's
+        # children (the video widget was constructed before the media player).
+        # A worker/unsaved-document refusal above must leave playback intact.
+        self._native_player.blockSignals(True)
+        self._native_player.stop()
+        self._native_player.setSource(QUrl())
+        self._native_player.setVideoOutput(None)
+        self._native_player.setAudioOutput(None)
         event.accept()
 
     def _replacement_requires_confirmation(self, continuation: Callable[[], None]) -> bool:
@@ -1435,7 +1444,14 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
             return
         before = self._material_state()
         self.document = document
-        self.project_path = default_project_path(document.media_root, document.drama)
+        try:
+            # A newly selected source folder starts a distinct editing batch.
+            # Keep the project, API materials and exports beside (not inside)
+            # the recursively scanned source folder.
+            self._ensure_batch(document)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "无法建立剪辑批次", f"素材已载入，但批次目录未能建立：\n{exc}\n\n请检查素材文件夹的写入权限后重试。")
+            self.project_path = default_project_path(document.media_root, document.drama)
         self._set_project_baseline(saved=False)
         self._transcript_cues = []
         self._remember_material_change(before)
@@ -1627,7 +1643,7 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
                 *[f"• {item['source']}：{item['status']}" for item in skipped_items[:8]],
             ]
             if len(results) > 16:
-                lines.append("其余结果请查看状态栏；每条工程和视频都在原素材文件夹内。")
+                lines.append("其余结果请查看状态栏；输出保存在所选素材文件夹旁边的项目目录中。")
             QMessageBox.information(self, "批量自动遮挡完成", "\n".join(lines))
             self._set_status(f"批量自动遮挡完成：成功 {len(completed_items)}，跳过／失败 {len(skipped_items)}。")
 
@@ -1740,6 +1756,11 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
             return
         if not self._transcript_cues:
             QMessageBox.information(self, "API 分析", "请先导入本批视频与带时间戳台词。API 只分析台词，不会上传视频或自动转写。")
+            return
+        try:
+            self._ensure_batch(document)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "无法建立剪辑批次", f"尚未发送 API 请求，也不会产生费用。\n\n批次目录建立失败：\n{exc}")
             return
         revision = document.revision
         dialog = ApiPlanningDialog(document, self._transcript_cues, self)

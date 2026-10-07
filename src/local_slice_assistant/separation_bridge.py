@@ -7,11 +7,12 @@ from time import monotonic
 import wave
 
 from .errors import LocalSliceError
+from .runtime_settings import runtime_setting
 from .narration_mix import file_sha256
 
-SEPARATION_ROOT = Path(os.environ.get("LOCAL_SLICE_SEPARATION_ROOT", Path.home() / ".yingxu" / "separation"))
-SEPARATION_PYTHON = Path(os.environ.get("LOCAL_SLICE_SEPARATION_PYTHON", SEPARATION_ROOT / "venv" / "Scripts" / "python.exe"))
-SEPARATION_CLI = Path(os.environ.get("LOCAL_SLICE_SEPARATION_CLI", SEPARATION_ROOT / "separation_cli.py"))
+SEPARATION_ROOT = Path(runtime_setting("LOCAL_SLICE_SEPARATION_ROOT", Path.home() / ".yingxu" / "separation"))
+SEPARATION_PYTHON = Path(runtime_setting("LOCAL_SLICE_SEPARATION_PYTHON", SEPARATION_ROOT / "venv" / "Scripts" / "python.exe"))
+SEPARATION_CLI = Path(runtime_setting("LOCAL_SLICE_SEPARATION_CLI", SEPARATION_ROOT / "separation_cli.py"))
 
 
 def validate_separation(input_path, output_dir):

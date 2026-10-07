@@ -1,0 +1,73 @@
+name: Build current portable apps (free standard runners)
+
+on:
+  push:
+    branches: [codex/current-portable-20261007]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: current-portable-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }} --jq .private)" = false
+          tag="portable-${GITHUB_SHA:0:12}"
+          gh release create "$tag" --draft --target "$GITHUB_SHA" --title "映序 当前便携版" --notes "仅供维护者下载核验的草稿。当前源码构建；不含私人素材或配置。Mac 未经维护者实机验证，未签名及公证。"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make diffutils pkgconf cmake
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-meson
+      - shell: msys2 {0}
+        run: bash scripts/build_ffmpeg_lgpl_validation.sh windows
+      - run: python -m pip install -e . "PySide6==6.11.2" "PyInstaller==6.22.3"
+      - run: python scripts/build_current_portable.py windows
+      - name: Save verified ZIP to draft release (no Actions artifact storage)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" "dist/映序-Windows.zip" "dist/映序-Windows.zip.sha256"
+
+  macos:
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - run: brew install nasm cmake meson ninja
+      - run: bash scripts/build_ffmpeg_lgpl_validation.sh macos
+      - run: python -m pip install -e . "PySide6==6.11.2" "PyInstaller==6.22.3"
+      - run: python scripts/build_current_portable.py macos
+      - name: Save verified ZIP to draft release (no Actions artifact storage)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" "dist/映序-Mac.zip" "dist/映序-Mac.zip.sha256"

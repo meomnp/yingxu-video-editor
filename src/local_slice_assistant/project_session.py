@@ -153,6 +153,18 @@ class ProjectSessionMixin:
             self._abort_session_gate(gate)
             self._set_status("请先导入素材或打开工程。")
             return
+        if not document.planning_context.get("batch"):
+            try:
+                if hasattr(self, "_ensure_batch"):
+                    self._ensure_batch(document)
+                else:
+                    from .batches import create_batch, safe_name
+                    folder = create_batch(document)
+                    self.project_path = folder / "工程" / f"{safe_name(document.drama)}.localcut.json"
+            except (OSError, ValueError) as exc:
+                self._abort_session_gate(gate)
+                self._set_status(f"无法建立本批次工程目录，未保存工程：{exc}")
+                return
         pending = self._session_save
         if pending is not None:
             if (

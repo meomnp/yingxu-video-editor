@@ -31,6 +31,7 @@ from .models import ProjectDocument, Segment
 from .paths import resolve_excluded_dirs, resolve_media_root, safe_resolve_media_path
 from .resources import GIB, ResourceMeter, snapshot
 from .timeline import format_timecode_us
+from .runtime_settings import runtime_setting
 
 
 DEFAULT_WINDOW_US = 5 * MICROSECONDS
@@ -46,11 +47,11 @@ SAVER_LONG_EDGE = 384
 VISION_TIMEOUT_SECONDS = 150
 
 _APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Yingxu"
-DEFAULT_RUNTIME = Path(os.environ.get(
+DEFAULT_RUNTIME = Path(runtime_setting(
     "LOCAL_SLICE_VISION_RUNTIME",
     _APP_DATA / "vision" / "llama.cpp" / "llama-mtmd-cli.exe",
 ))
-DEFAULT_MODEL_ROOT = Path(os.environ.get(
+DEFAULT_MODEL_ROOT = Path(runtime_setting(
     "LOCAL_SLICE_VISION_MODEL_ROOT",
     _APP_DATA / "vision" / "SmolVLM2-2.2B-Instruct-GGUF",
 ))

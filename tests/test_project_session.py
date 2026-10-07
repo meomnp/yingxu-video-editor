@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from threading import Event
@@ -55,11 +56,15 @@ class ProjectSessionTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.host = _SessionHost()
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        media_root = Path(self.tempdir.name) / "素材"
+        media_root.mkdir()
         source = SourceInfo(
             "synthetic.mp4", 1, 2_000_000, 2_000_000, 1, 1, "synthetic", False, 25, 1, 160, 90
         )
         self.document = ProjectDocument(
-            media_root=str(Path.cwd()), drama="合成会话", original_manifest={},
+            media_root=str(media_root), drama="合成会话", original_manifest={},
             sources={source.relative_path: source},
             cuts=[
                 Cut(title="第一条", segments=[Segment(source.relative_path, 0, 1_000_000, "前段")]),
@@ -112,6 +117,9 @@ class ProjectSessionTests(unittest.TestCase):
     def test_new_documents_are_dirty_until_successful_save(self) -> None:
         self.assertTrue(self.host._project_is_dirty())
         self.host.save_project_dialog()
+        batch = self.document.planning_context["batch"]
+        self.assertTrue(batch["directory"].endswith("合成会话_第001批"))
+        self.assertIn(f"{Path(batch['directory']) / '工程'}", self.file_dialog.call_args.args[2])
         self.assertTrue(self.host._project_is_dirty())
         self._finish_save()
         self.assertFalse(self.host._project_is_dirty())
@@ -136,7 +144,8 @@ class ProjectSessionTests(unittest.TestCase):
         self._finish_save()
         self.assertTrue(self.host._project_is_dirty())
         snapshot = self.save.call_args.args[0]
-        self.assertEqual(snapshot.planning_context, {})
+        self.assertEqual(snapshot.planning_context["batch"], self.document.planning_context["batch"])
+        self.assertEqual(snapshot.planning_context["export_directory"], self.document.planning_context["export_directory"])
         self.assertIn("新修改尚未保存", self.host.statuses[-1])
 
     def test_old_save_cannot_change_new_document_path_or_baseline(self) -> None:
@@ -225,7 +234,7 @@ class ProjectSessionTests(unittest.TestCase):
         self._finish_save(error=error)
         self.app.processEvents()
         continuation.assert_not_called()
-        self.assertIsNone(self.host.project_path)
+        self.assertEqual(self.host.project_path.parent.name, "工程")
         self.assertTrue(self.host._project_is_dirty())
         self.assertEqual(self.host.errors, [error])
         self.assertIsNone(self.host._session_save)

@@ -527,6 +527,16 @@ class GuiStage2Tests(unittest.TestCase):
                 player.setSource(QUrl())
                 self.app.processEvents()
 
+    def test_accepted_close_detaches_native_media_outputs_before_window_disposal(self) -> None:
+        self.assertIsNotNone(self.window.player.videoOutput())
+        self.assertIsNotNone(self.window.player.audioOutput())
+        self.window.close()
+        self.assertEqual(self.window.player.playbackState(), QMediaPlayer.PlaybackState.StoppedState)
+        self.assertTrue(self.window.player.source().isEmpty())
+        self.assertIsNone(self.window.player.videoOutput())
+        self.assertIsNone(self.window.player.audioOutput())
+        self.assertTrue(self.window.player.signalsBlocked())
+
     def test_guide_failure_does_not_lose_successful_package_binding(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
             target = Path(raw_root) / "任务包.json"
@@ -717,7 +727,7 @@ class GuiStage2Tests(unittest.TestCase):
                 "1. 导入视频（可多选）",
                 "导入已有台词",
                 "A. 导出任务包（网页 / 其他 AI）",
-                "B. API 分析（实验功能，暂未完善，可能计费）",
+            "B. API 分析（会产生费用）",
                 "复制确认设计后的 JSON 提示词",
                 "4. 导入外部 AI 方案（JSON / MD / TXT；API 结果直接进入审阅）",
                 "5. 预览并核对衔接",

@@ -10,6 +10,7 @@ from threading import Event
 from typing import Callable
 
 from .ffmpeg import ffmpeg_binary, probe_media
+from .video_encoding import video_encoding_options
 
 
 @dataclass(frozen=True)
@@ -88,8 +89,8 @@ def remove_watermark(
     command = [
         ffmpeg_binary(), "-hide_banner", "-nostdin", "-loglevel", "error",
         "-i", os.fspath(source), "-map", "0:v:0", "-map", "0:a?",
-        "-vf", _filter(region, start, end), "-c:v", "libx264", "-preset", "medium",
-        "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+        "-vf", _filter(region, start, end), *video_encoding_options(),
+        "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
         "-progress", "pipe:1", "-y", os.fspath(temporary),
     ]
     try:

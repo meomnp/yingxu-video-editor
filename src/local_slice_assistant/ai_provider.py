@@ -6,7 +6,7 @@ executes model output, follows redirects, or consults proxy/environment secrets.
 Keys live only in memory; do not serialize ``ProviderConfig`` into project files.
 
 Protocol checked against https://api-docs.deepseek.com/api/create-chat-completion/
-on 2026-09-30. Providers must implement the same non-streaming text contract.
+Providers may return ordinary JSON or the Chat Completions SSE text contract.
 """
 
 from __future__ import annotations
@@ -54,12 +54,21 @@ class PartialCompletionError(ProviderError):
         self.diagnostics = diagnostics or {}
 
 
+class CompletionText(str):
+    """Text-compatible result retaining service usage on successful replies."""
+
+    def __new__(cls, content, diagnostics):
+        result = super().__new__(cls, content)
+        result.diagnostics = diagnostics
+        return result
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderConfig:
     base_url: str
     model: str
     api_key: str = field(repr=False)
-    timeout_seconds: float = 120.0
+    timeout_seconds: float = 7200.0
     max_request_bytes: int = 4 * 1024 * 1024
     # Leave room for very long completions when a provider permits a large
     # max_tokens value (DeepSeek currently accepts 393,216). This is a local
@@ -69,6 +78,11 @@ class ProviderConfig:
     # DeepSeek endpoint uses its documented maximum; generic compatible APIs
     # receive no max_tokens field unless the caller explicitly sets one.
     max_output_tokens: int | None = None
+    # Only applied to the official DeepSeek host; generic compatible APIs are
+    # left untouched. Default to low thinking for the requested local test.
+    thinking_mode: str = "low"
+    stream: bool = False
+    progress_callback: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         completion_url(self)
@@ -84,9 +98,11 @@ class ProviderConfig:
         if not self.api_key and urlsplit(self.base_url).scheme.lower() == "https":
             raise ProviderConfigurationError("请填写 API Key；密钥只在本次窗口内使用，不会保存。")
         if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (float, int)):
-            raise ProviderConfigurationError("超时必须是 0.1 到 600 秒之间的数字。")
-        if not math.isfinite(self.timeout_seconds) or not 0.1 <= self.timeout_seconds <= 600:
-            raise ProviderConfigurationError("超时必须是 0.1 到 600 秒之间的数字。")
+            raise ProviderConfigurationError("等待期限必须是 0.1 到 7200 秒之间的数字。")
+        if not math.isfinite(self.timeout_seconds) or not 0.1 <= self.timeout_seconds <= 7200:
+            raise ProviderConfigurationError("等待期限必须是 0.1 到 7200 秒之间的数字。")
+        if not isinstance(self.stream, bool) or (self.progress_callback is not None and not callable(self.progress_callback)):
+            raise ProviderConfigurationError("流式接收设置无效。")
         for value, ceiling in ((self.max_request_bytes, 16 * 1024 * 1024),
                                (self.max_response_bytes, 32 * 1024 * 1024)):
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= ceiling:
@@ -96,6 +112,8 @@ class ProviderConfig:
                      or not isinstance(self.max_output_tokens, int)
                      or not 1 <= self.max_output_tokens <= 2**63 - 1)):
             raise ProviderConfigurationError("输出长度上限无效。")
+        if self.thinking_mode not in {"disabled", "low", "high", "max"}:
+            raise ProviderConfigurationError("DeepSeek 思考模式只能是 disabled、low、high 或 max。")
 
 
 def completion_url(config: ProviderConfig) -> str:
@@ -163,7 +181,9 @@ def _payload(config: ProviderConfig, messages: Sequence[Mapping[str, str]]) -> b
             raise ProviderConfigurationError("分析消息必须包含非空纯文本。")
         copied.append({"role": message["role"], "content": message["content"]})
     deepseek = (urlsplit(config.base_url).hostname or "").lower() == "api.deepseek.com"
-    request = {"model": config.model, "messages": copied, "stream": False}
+    request = {"model": config.model, "messages": copied, "stream": config.stream}
+    if config.stream:
+        request["stream_options"] = {"include_usage": True}
     output_limit = config.max_output_tokens
     if output_limit is None and deepseek:
         output_limit = 393216  # DeepSeek documented maximum (384K).
@@ -171,16 +191,14 @@ def _payload(config: ProviderConfig, messages: Sequence[Mapping[str, str]]) -> b
         raise ProviderConfigurationError("DeepSeek 的 max_tokens 不能超过官方 384K（393,216）最大值。")
     if output_limit is not None:
         request["max_tokens"] = output_limit
-    # DeepSeek enables reasoning by default. In the failed requests all
-    # completion tokens were reasoning_tokens and content was empty. Disable
-    # reasoning only for the official DeepSeek endpoint; do not send this
-    # provider-specific field to other OpenAI-compatible services.
+    # Thinking controls are provider-specific; never send them to other
+    # OpenAI-compatible services. DeepSeek counts reasoning and visible answer
+    # tokens together against max_tokens.
     if deepseek:
-        request["thinking"] = {"type": "disabled"}
-        # DeepSeek documents an 8K default for non-thinking requests when
-        # max_tokens is omitted. Explicitly send the non-thinking effort too,
-        # so newer model routes cannot silently fall back to reasoning mode.
-        request["reasoning_effort"] = "none"
+        enabled = config.thinking_mode != "disabled"
+        request["thinking"] = {"type": "enabled" if enabled else "disabled"}
+        if enabled:
+            request["reasoning_effort"] = config.thinking_mode
     try:
         body = json.dumps(request, ensure_ascii=False).encode("utf-8")
     except (UnicodeError, ValueError):
@@ -243,7 +261,121 @@ def _extract_content(data: bytes) -> str:
                                      str(finish_reason or "unknown"), diagnostics)
     if not isinstance(content, str) or not content.strip():
         raise ProviderError("API 正常结束但没有返回可用正文；仅思考内容不能作为剪辑方案。")
-    return content
+    return CompletionText(content, diagnostics)
+
+
+class _StreamingReply:
+    """Bounded SSE accumulator; keep-alive is not a completed response."""
+
+    def __init__(self, callback=None):
+        self.callback = callback
+        self.pending = bytearray()
+        self.event_lines = []
+        self.parts = []
+        self.content_characters = 0
+        self.reasoning_characters = 0
+        self.received_bytes = 0
+        self.finish_reason = None
+        self.done = False
+        self.diagnostics = {"usage": {}, "model": "", "response_id": ""}
+        self.last_report = 0.0
+
+    @property
+    def content(self):
+        return ''.join(self.parts)
+
+    def report(self, phase, force=False):
+        now = time.monotonic()
+        if self.callback and (force or now - self.last_report >= 0.5):
+            self.last_report = now
+            self.callback({"phase": phase, "content": self.content,
+                           "content_characters": self.content_characters,
+                           "reasoning_characters": self.reasoning_characters,
+                           "received_bytes": self.received_bytes,
+                           **self.diagnostics})
+
+    def feed(self, raw):
+        self.received_bytes += len(raw)
+        self.pending.extend(raw)
+        while b'\n' in self.pending and not self.done:
+            line, _, remaining = self.pending.partition(b'\n')
+            self.pending = bytearray(remaining)
+            line = line.rstrip(b'\r')
+            if not line:
+                self.dispatch()
+            elif line.startswith(b'data:'):
+                self.event_lines.append(line[5:].lstrip(b' '))
+            elif line.startswith(b':'):
+                self.report('服务端连接仍在保活，尚未收到完整回答')
+
+    def dispatch(self):
+        if not self.event_lines:
+            return
+        raw = b'\n'.join(self.event_lines)
+        self.event_lines.clear()
+        if raw.strip() == b'[DONE]':
+            self.done = True
+            self.report('流式接收结束，正在本机校验', force=True)
+            return
+        try:
+            event = json.loads(raw.decode('utf-8-sig'))
+        except (UnicodeError, ValueError, RecursionError):
+            raise ProviderError('API 流式事件格式无效；已停止，未自动重试。') from None
+        if not isinstance(event, dict) or 'error' in event:
+            raise ProviderError('API 流式返回错误；未自动重试。')
+        for remote, local in (('id', 'response_id'), ('model', 'model')):
+            if isinstance(event.get(remote), str):
+                self.diagnostics[local] = event[remote]
+        usage = event.get('usage')
+        if isinstance(usage, dict):
+            self.diagnostics['usage'] = {
+                key: value for key, value in usage.items()
+                if isinstance(value, int) and not isinstance(value, bool)
+            }
+            for key, value in usage.items():
+                if isinstance(value, dict):
+                    self.diagnostics['usage'][key] = {k: v for k, v in value.items()
+                        if isinstance(v, int) and not isinstance(v, bool)}
+        choices = event.get('choices')
+        if choices == [] and isinstance(usage, dict):
+            return
+        if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+            raise ProviderError('API 流式结果不是唯一文本；不执行工具调用。')
+        choice = choices[0]
+        if choice.get('index', 0) != 0:
+            raise ProviderError('API 流式结果序号不兼容。')
+        delta = choice.get('delta', {})
+        if not isinstance(delta, dict) or delta.get('role', 'assistant') != 'assistant':
+            raise ProviderError('API 流式结果不是普通助手文本。')
+        if delta.get('tool_calls') or delta.get('function_call'):
+            raise ProviderError('模型尝试调用工具；本工具不执行工具调用。')
+        text, reasoning = delta.get('content'), delta.get('reasoning_content')
+        if text is not None and not isinstance(text, str):
+            raise ProviderError('API 流式正文不是纯文本。')
+        if isinstance(text, str):
+            self.parts.append(text)
+            self.content_characters += len(text)
+        if isinstance(reasoning, str):
+            self.reasoning_characters += len(reasoning)
+        if choice.get('finish_reason') is not None:
+            self.finish_reason = str(choice['finish_reason'])
+        self.report('正在接收正文' if self.content_characters else '模型正在思考，尚未收到设计正文')
+
+    def result(self):
+        self.report('流式接收结束，正在本机校验', force=True)
+        if not self.done or self.finish_reason != 'stop':
+            raise PartialCompletionError(self.content, self.finish_reason or 'stream_interrupted', self.diagnostics)
+        if not self.content.strip():
+            raise ProviderError('API 正常结束但没有返回可用正文；仅思考内容不能作为剪辑方案。')
+        return CompletionText(self.content, self.diagnostics)
+
+    def preserve_error(self, error):
+        if self.content:
+            self.report('接收中断；已收到的正文保留为未完成回复', force=True)
+            reason = ('cancelled' if isinstance(error, ProviderCancelled) else
+                      'timeout' if isinstance(error, ProviderTimeout) else 'stream_interrupted')
+            return PartialCompletionError(self.content, reason, self.diagnostics)
+        return error
 
 
 class _InterruptibleSocket:
@@ -403,10 +535,11 @@ def request_completion(
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     connection = http.client.HTTPConnection(parsed.hostname, port, timeout=config.timeout_seconds)
     response = None
+    streaming = None
     try:
         connection.sock = _connect(parsed.hostname, port, parsed.scheme == "https", cancel_event, deadline)
         _check_interruption(cancel_event, deadline)
-        headers = {"Content-Type": "application/json; charset=utf-8", "Accept": "application/json",
+        headers = {"Content-Type": "application/json; charset=utf-8", "Accept": "text/event-stream, application/json" if config.stream else "application/json",
                    "Accept-Encoding": "identity", "Connection": "close"}
         if config.api_key:
             headers["Authorization"] = "Bearer " + config.api_key
@@ -427,7 +560,9 @@ def request_completion(
         if encoding not in {"", "identity"}:
             raise ProviderError("API 返回压缩内容而未遵守 identity 请求；已停止，避免解压超限。")
         content_type = response.getheader("Content-Type", "").split(";", 1)[0].strip().lower()
-        if content_type and content_type != "application/json" and not content_type.endswith("+json"):
+        if content_type == 'text/event-stream' and config.stream:
+            streaming = _StreamingReply(config.progress_callback)
+        elif content_type and content_type != "application/json" and not content_type.endswith("+json"):
             raise ProviderError("API 响应不是 JSON 类型；请检查接口地址。")
         length = response.getheader("Content-Length")
         if length is not None:
@@ -438,28 +573,47 @@ def request_completion(
             if declared < 0 or declared > config.max_response_bytes:
                 raise ProviderError("API 响应超过大小上限；已停止接收，未导入任何方案。")
         chunks = bytearray()
+        received_bytes = 0
         while True:
             _check_interruption(cancel_event, deadline)
-            chunk = response.read1(min(65536, config.max_response_bytes + 1 - len(chunks)))
-            _check_interruption(cancel_event, deadline)
+            chunk = response.read1(min(65536, config.max_response_bytes + 1 - received_bytes))
             if not chunk:
                 break
-            chunks.extend(chunk)
-            if len(chunks) > config.max_response_bytes:
+            received_bytes += len(chunk)
+            if received_bytes > config.max_response_bytes:
                 raise ProviderError("API 响应超过大小上限；已停止接收，未导入任何方案。")
-        if length is not None and len(chunks) != declared:
+            if streaming is not None:
+                streaming.feed(chunk)
+                if streaming.done:
+                    return streaming.result()
+            else:
+                chunks.extend(chunk)
+            _check_interruption(cancel_event, deadline)
+        if streaming is not None:
+            return streaming.result()
+        if length is not None and received_bytes != declared:
             raise ProviderError("API 响应传输不完整；未导入任何方案，也未自动重试。")
         content = _extract_content(bytes(chunks))
         _check_interruption(cancel_event, deadline)
         return content
-    except ProviderError:
+    except PartialCompletionError:
         raise
+    except ProviderError as exc:
+        raise streaming.preserve_error(exc) if streaming is not None else exc
     except (TimeoutError, socket.timeout):
-        _check_interruption(cancel_event, deadline)
-        raise ProviderTimeout("API 连接或读取超时；结果状态不确定，不会自动重试。") from None
+        error = ProviderTimeout("API 连接或读取超时；结果状态不确定，不会自动重试。")
+        try:
+            _check_interruption(cancel_event, deadline)
+        except ProviderError as exc:
+            error = exc
+        raise streaming.preserve_error(error) if streaming is not None else error
     except (OSError, http.client.HTTPException, ValueError):
-        _check_interruption(cancel_event, deadline)
-        raise ProviderError("API 连接或响应读取失败；请核对网络与接口。未自动重试，服务端可能已接收请求。") from None
+        error = ProviderError("API 连接或响应读取失败；请核对网络与接口。未自动重试，服务端可能已接收请求。")
+        try:
+            _check_interruption(cancel_event, deadline)
+        except ProviderError as exc:
+            error = exc
+        raise streaming.preserve_error(error) if streaming is not None else error
     finally:
         if response is not None:
             response.close()

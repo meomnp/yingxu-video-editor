@@ -269,9 +269,16 @@ class ProjectDocument:
             not isinstance(key, str) or
             (type(value) is not bool if key == "include_narration" else not isinstance(value, str))
             for key, value in self.planning_context.items()
-            if key not in {"form_options", "batch"}
+            if key not in {"form_options", "batch", "api_transport"}
         ):
             raise ManifestValidationError("工程的 AI 规划状态无效。")
+        transport = self.planning_context.get("api_transport")
+        if transport is not None and (not isinstance(transport, dict)
+                or set(transport) != {"wait_minutes", "stream"}
+                or type(transport.get("wait_minutes")) is not int
+                or not 1 <= transport["wait_minutes"] <= 120
+                or type(transport.get("stream")) is not bool):
+            raise ManifestValidationError("工程的 API 接收设置无效。")
         batch = self.planning_context.get('batch')
         if batch is not None and (not isinstance(batch, dict) or set(batch) != {'name', 'directory', 'number'}
                 or not isinstance(batch.get('name'), str) or not isinstance(batch.get('directory'), str)

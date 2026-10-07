@@ -5,6 +5,9 @@ import sys
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == '--portable-export-check':
+        from local_slice_assistant.portable_smoke import main as export_check
+        return export_check(sys.argv[2])
     # Both release executables share the same bundled modules and media tools.
     # Only the console executable owns stdin/stdout for automation.
     if Path(sys.executable).stem.casefold() == 'localsliceassistantcli' or '--cli' in sys.argv[1:]:

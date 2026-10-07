@@ -41,7 +41,7 @@ class MediaProbe:
 
 def _binary(name: str) -> str:
     custom = os.environ.get(f"LOCAL_SLICE_{name.upper()}")
-    candidates: list[str | None] = [custom, shutil.which(name)]
+    candidates: list[str | None] = [custom]
     if getattr(sys, "frozen", False):
         # PyInstaller 6 onedir releases keep add-binary files under the runtime
         # directory; macOS uses an extensionless executable while Windows uses
@@ -51,6 +51,7 @@ def _binary(name: str) -> str:
         executable_name = f"{name}.exe" if os.name == "nt" else name
         candidates.append(os.fspath(bundle_dir / executable_name))
         candidates.append(os.fspath(Path(sys.executable).resolve().parent / executable_name))
+    candidates.append(shutil.which(name))
     candidate = next((item for item in candidates if item and Path(item).is_file()), None)
     if not candidate:
         raise MediaProbeError(

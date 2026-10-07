@@ -3,13 +3,14 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from .runtime_settings import runtime_setting
 
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QMessageBox,
     QPushButton, QVBoxLayout,
 )
 
-VOICE_LAUNCHER = Path(os.environ.get(
+VOICE_LAUNCHER = Path(runtime_setting(
     "LOCAL_SLICE_VOICE_LAUNCHER",
     Path.home() / ".yingxu" / "voice" / "Start-VoiceStudio.ps1",
 ))

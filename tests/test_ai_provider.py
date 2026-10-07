@@ -16,6 +16,8 @@ from local_slice_assistant.ai_provider import (
     ProviderConfigurationError,
     ProviderError,
     ProviderTimeout,
+    PartialCompletionError,
+    _StreamingReply,
     _payload,
     completion_url,
     request_completion,
@@ -29,7 +31,7 @@ def response_json(content="剪辑方案：第二集在前，第一集在后。",
 
 
 @contextmanager
-def local_server(*, data=None, status=200, headers=None, delay=0, chunked=False, raw_length=None, body_delay=0):
+def local_server(*, data=None, status=200, headers=None, delay=0, chunked=False, raw_length=None, body_delay=0, content_type="application/json", tail_delay=0):
     records = []
     received = threading.Event()
     reply = response_json() if data is None else data
@@ -42,19 +44,20 @@ def local_server(*, data=None, status=200, headers=None, delay=0, chunked=False,
 
         def do_POST(self):
             body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            current_reply = reply(json.loads(body)) if callable(reply) else reply
             records.append({"path": self.path, "body": body, "headers": dict(self.headers)})
             received.set()
             if delay:
                 time.sleep(delay)
             try:
                 self.send_response(status)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", content_type)
                 if chunked:
                     self.send_header("Transfer-Encoding", "chunked")
                 elif raw_length is not None:
                     self.send_header("Content-Length", raw_length)
                 else:
-                    self.send_header("Content-Length", str(len(reply)))
+                    self.send_header("Content-Length", str(len(current_reply)))
                 for key, value in (headers or {}).items():
                     self.send_header(key, value)
                 self.end_headers()
@@ -62,13 +65,15 @@ def local_server(*, data=None, status=200, headers=None, delay=0, chunked=False,
                     self.wfile.flush()
                     time.sleep(body_delay)
                 if chunked:
-                    for start in range(0, len(reply), 13):
-                        piece = reply[start:start + 13]
+                    for start in range(0, len(current_reply), 13):
+                        piece = current_reply[start:start + 13]
                         self.wfile.write(f"{len(piece):x}\r\n".encode() + piece + b"\r\n")
                     self.wfile.write(b"0\r\n\r\n")
                 else:
-                    self.wfile.write(reply)
+                    self.wfile.write(current_reply)
                 self.wfile.flush()
+                if tail_delay:
+                    time.sleep(tail_delay)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
             self.close_connection = True
@@ -87,6 +92,102 @@ def local_server(*, data=None, status=200, headers=None, delay=0, chunked=False,
 
 MESSAGES = [{"role": "system", "content": "只返回剪辑方案"},
             {"role": "user", "content": "这是明确选择的台词文字，不是视频"}]
+
+
+class StreamingTests(unittest.TestCase):
+    @staticmethod
+    def event(content=None, reasoning=None, finish=None):
+        delta = {}
+        if content is not None:
+            delta['content'] = content
+        if reasoning is not None:
+            delta['reasoning_content'] = reasoning
+        return ('data: ' + json.dumps({'id': 'stream-test', 'choices': [
+            {'index': 0, 'delta': delta, 'finish_reason': finish}]}, ensure_ascii=False)
+            + '\r\n\r\n').encode('utf-8')
+
+    def test_fragmented_utf8_keepalive_usage_and_done(self):
+        progress = []
+        reply = _StreamingReply(progress.append)
+        body = (b': keep-alive\r\n\r\n' + self.event(reasoning='思考中')
+                + self.event(content='完整设计稿', finish='stop')
+                + b'data: {"choices":[],"usage":{"prompt_tokens":23,"completion_tokens":9}}\n\n'
+                + b'data: [DONE]\n\n')
+        for byte in body:
+            reply.feed(bytes([byte]))
+        result = reply.result()
+        self.assertEqual(result, '完整设计稿')
+        self.assertEqual(result.diagnostics['usage']['completion_tokens'], 9)
+        self.assertEqual(reply.reasoning_characters, 3)
+        self.assertEqual(progress[-1]['content'], result)
+
+    def test_interruption_preserves_text_but_never_marks_complete(self):
+        for error, reason in [(ProviderTimeout('超时'), 'timeout'),
+                              (ProviderCancelled('取消'), 'cancelled'),
+                              (ProviderError('断开'), 'stream_interrupted')]:
+            reply = _StreamingReply()
+            reply.feed(self.event(content='已经收到的正文'))
+            partial = reply.preserve_error(error)
+            self.assertIsInstance(partial, PartialCompletionError)
+            self.assertEqual(partial.content, '已经收到的正文')
+            self.assertEqual(partial.finish_reason, reason)
+            with self.assertRaises(PartialCompletionError):
+                reply.result()
+
+    def test_thinking_only_timeout_is_not_a_design(self):
+        reply = _StreamingReply()
+        reply.feed(self.event(reasoning='只有思考'))
+        error = ProviderTimeout('超时')
+        self.assertIs(reply.preserve_error(error), error)
+        self.assertEqual(reply.content, '')
+
+    def test_actual_http_stream_no_second_request(self):
+        data = self.event(content='方案正文', finish='stop') + b'data: [DONE]\n\n'
+        with local_server(data=data, content_type='text/event-stream', chunked=True) as (url, records, _):
+            result = request_completion(ProviderConfig(url, 'test-model', 'test-key', stream=True), MESSAGES)
+        self.assertEqual(result, '方案正文')
+        self.assertEqual(len(records), 1)
+        payload = json.loads(records[0]['body'])
+        self.assertTrue(payload['stream'])
+        self.assertEqual(payload['stream_options'], {'include_usage': True})
+
+    def test_actual_http_disconnection_saves_partial(self):
+        with local_server(data=self.event(content='不完整正文'), content_type='text/event-stream') as (url, records, _):
+            with self.assertRaises(PartialCompletionError) as caught:
+                request_completion(ProviderConfig(url, 'test-model', 'test-key', stream=True), MESSAGES)
+        self.assertEqual(caught.exception.content, '不完整正文')
+        self.assertEqual(len(records), 1)
+
+    def test_json_compatibility_and_expanded_default_wait(self):
+        with local_server() as (url, records, _):
+            config = ProviderConfig(url, 'test-model', 'test-key', stream=True)
+            self.assertEqual(config.timeout_seconds, 7200)
+            result = request_completion(config, MESSAGES)
+        self.assertTrue(result)
+        self.assertEqual(len(records), 1)
+
+    def test_real_socket_timeout_after_visible_text_preserves_it(self):
+        with local_server(data=self.event(content='超时前已收到'), content_type='text/event-stream',
+                          raw_length='99999', tail_delay=0.3) as (url, records, _):
+            with self.assertRaises(PartialCompletionError) as caught:
+                request_completion(ProviderConfig(url, 'model', 'key', stream=True, timeout_seconds=0.12), MESSAGES)
+        self.assertEqual(caught.exception.content, '超时前已收到')
+        self.assertEqual(caught.exception.finish_reason, 'timeout')
+        self.assertEqual(len(records), 1)
+
+    def test_real_socket_cancellation_after_text_preserves_it(self):
+        cancel = threading.Event()
+        def progress(details):
+            if details['content']:
+                cancel.set()
+        with local_server(data=self.event(content='取消前已收到'), content_type='text/event-stream',
+                          raw_length='99999', tail_delay=0.3) as (url, records, _):
+            with self.assertRaises(PartialCompletionError) as caught:
+                request_completion(ProviderConfig(url, 'model', 'key', stream=True,
+                    progress_callback=progress), MESSAGES, cancel_event=cancel)
+        self.assertEqual(caught.exception.content, '取消前已收到')
+        self.assertEqual(caught.exception.finish_reason, 'cancelled')
+        self.assertEqual(len(records), 1)
 
 
 class ProviderConfigTests(unittest.TestCase):
@@ -136,10 +237,10 @@ class ProviderConfigTests(unittest.TestCase):
 
     def test_configuration_limits(self):
         for overrides in [{"timeout_seconds": float("nan")}, {"timeout_seconds": float("inf")},
-                          {"timeout_seconds": True}, {"timeout_seconds": 0}, {"timeout_seconds": 601},
+                          {"timeout_seconds": True}, {"timeout_seconds": 0}, {"timeout_seconds": 7201},
                           {"model": ""}, {"model": "a\n"}, {"max_response_bytes": 0},
                           {"max_request_bytes": 20 * 1024 * 1024}, {"max_output_tokens": True},
-                          {"max_output_tokens": 0}]:
+                          {"max_output_tokens": 0}, {"thinking_mode": "unrecognized"}]:
             values = {"base_url": "https://example.com", "model": "m", "api_key": "secret", **overrides}
             with self.subTest(overrides=overrides), self.assertRaises(ProviderConfigurationError):
                 ProviderConfig(**values)
@@ -150,16 +251,29 @@ class ProviderRequestTests(unittest.TestCase):
         config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key")
         payload = json.loads(_payload(config, MESSAGES))
         self.assertEqual(payload["max_tokens"], 393216)
-        self.assertEqual(payload["thinking"], {"type": "disabled"})
-        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertEqual(payload["thinking"], {"type": "enabled"})
+        self.assertEqual(payload["reasoning_effort"], "low")
 
-    def test_deepseek_disables_thinking_and_uses_configured_output_cap(self):
+    def test_deepseek_thinking_can_be_disabled_and_uses_configured_output_cap(self):
         config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key",
-                                max_output_tokens=393216)
+                                max_output_tokens=393216, thinking_mode="disabled")
         payload = json.loads(_payload(config, MESSAGES))
         self.assertEqual(payload["thinking"], {"type": "disabled"})
-        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertNotIn("reasoning_effort", payload)
         self.assertEqual(payload["max_tokens"], 393216)
+
+    def test_deepseek_thinking_effort_is_explicit_and_other_hosts_are_untouched(self):
+        for effort in ("low", "high", "max"):
+            payload = json.loads(_payload(ProviderConfig(
+                "https://api.deepseek.com", "deepseek-flash", "local-test-key", thinking_mode=effort
+            ), MESSAGES))
+            self.assertEqual(payload["thinking"], {"type": "enabled"})
+            self.assertEqual(payload["reasoning_effort"], effort)
+        payload = json.loads(_payload(ProviderConfig(
+            "https://example.com", "model", "local-test-key", thinking_mode="max"
+        ), MESSAGES))
+        self.assertNotIn("thinking", payload)
+        self.assertNotIn("reasoning_effort", payload)
 
     def test_deepseek_rejects_values_above_its_official_output_maximum(self):
         config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key",

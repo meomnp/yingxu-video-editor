@@ -145,6 +145,9 @@ class ExportContractTests(unittest.TestCase):
 
     def test_default_export_is_numbered_and_explicit_existing_file_never_encodes(self):
         output = default_export_path(self.document)
+        expected_parent = self.root.parent / "映序项目" / self.root.name / "默认导出"
+        self.assertEqual(output.parent, expected_parent.resolve())
+        self.assertFalse(output.is_relative_to(self.root.resolve()))
         output.write_bytes(b"previous export")
         second = default_export_path(self.document)
         self.assertNotEqual(second, output)
@@ -153,6 +156,16 @@ class ExportContractTests(unittest.TestCase):
             export_cut(self.document, output_path=output)
         encode.assert_not_called()
         self.assertEqual(output.read_bytes(), b"previous export")
+
+    def test_sibling_exports_are_not_discovered_as_source_videos(self):
+        from local_slice_assistant.exporter import export_directory
+        from local_slice_assistant.paths import discover_media_files
+
+        source = self.root / "01.mp4"
+        source.write_bytes(b"source")
+        sibling_output = export_directory(self.root)
+        (sibling_output / "01.mp4").write_bytes(b"finished")
+        self.assertNotIn((sibling_output / "01.mp4").resolve(), discover_media_files(self.root))
 
     def test_export_names_preserve_episode_numbers_and_letters(self):
         for title in ("第01集 ABC_xyz_剪辑", "S01E03", "片段3-5"):
