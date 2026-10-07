@@ -51,6 +51,7 @@ if [[ "$(dirname "$FFMPEG_IN_APP")" != "$(dirname "$FFPROBE_IN_APP")" ]]; then
   exit 1
 fi
 LIBS="$(dirname "$FFMPEG_IN_APP")/libs"
+mkdir -p "$LIBS"
 
 # Homebrew FFmpeg links to non-system dylibs. Bundle their dependency closure
 # beside the app binaries and rewrite load paths for an isolated app bundle.
