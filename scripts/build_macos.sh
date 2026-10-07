@@ -79,6 +79,12 @@ PACKAGE="$OUT_ROOT/映序-macOS-${ARCH}-便携测试候选"
 mkdir -p "$PACKAGE"
 ditto "$APP" "$PACKAGE/映序.app"
 cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$PACKAGE/"
+PYINSTALLER_COPYING="$(python -c 'from importlib.metadata import distribution; d=distribution("PyInstaller"); print(next(str(d.locate_file(p)) for p in d.files if str(p).endswith(".dist-info/licenses/COPYING.txt")))')"
+if [[ ! -f "$PYINSTALLER_COPYING" ]]; then
+  echo "PyInstaller bootloader license text was not found; refusing to omit its GPL Bootloader Exception notice." >&2
+  exit 1
+fi
+cp "$PYINSTALLER_COPYING" "$PACKAGE/PYINSTALLER_COPYING.txt"
 {
   echo "Product: 映序 macOS arm64 portable test candidate"
   echo "Source commit: $(git rev-parse HEAD)"

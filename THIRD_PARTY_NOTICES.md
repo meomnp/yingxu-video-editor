@@ -5,6 +5,12 @@ That license does not replace the licenses of bundled third-party software.
 
 ## Portable candidates
 
+PyInstaller's bootloader is embedded in the generated launcher executable and
+is distributed under GPL-2.0-or-later with the PyInstaller Bootloader
+Exception. Candidate build scripts copy the exact `COPYING.txt` shipped with
+the installed PyInstaller version into `PYINSTALLER_COPYING.txt`; this license
+applies to the bootloader, not to the 映序 application source.
+
 The Windows and macOS portable candidates produced by the scripts in `scripts/`
 bundle FFmpeg and ffprobe as separate local command-line programs. The candidates
 currently audited are GPL builds, not LGPL-only builds:

@@ -59,6 +59,11 @@ try {
     foreach ($file in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
         Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $bundle
     }
+    $pyInstallerCopying = (& $python -c "from importlib.metadata import distribution; d=distribution('PyInstaller'); print(next(str(d.locate_file(p)) for p in d.files if str(p).endswith('.dist-info/licenses/COPYING.txt')))" 2>&1 | Out-String).Trim()
+    if (-not (Test-Path -LiteralPath $pyInstallerCopying -PathType Leaf)) {
+        throw 'PyInstaller bootloader license text was not found; refusing to omit its GPL Bootloader Exception notice.'
+    }
+    Copy-Item -LiteralPath $pyInstallerCopying -Destination (Join-Path $bundle 'PYINSTALLER_COPYING.txt')
     $readme = @(
         '映序 Windows 便携测试候选版',
         '',
