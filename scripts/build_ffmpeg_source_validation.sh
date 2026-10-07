@@ -85,6 +85,13 @@ fi
 test -f "$FONTFILE"
 
 FREETYPE_BUILD="$BUILD_ROOT/freetype-build"
+FREETYPE_CMAKE_ARGS=()
+if [[ "$TARGET" == windows ]]; then
+  # CMake launched from MSYS can report the host as MSYS/UNIX even though the
+  # selected compiler targets native Windows. Tell FreeType to use its Win32
+  # system backend (the UNIX backend requires sys/mman.h, absent in MinGW).
+  FREETYPE_CMAKE_ARGS+=(-DCMAKE_SYSTEM_NAME=Windows)
+fi
 cmake -S "$FREETYPE_SOURCE" -B "$FREETYPE_BUILD" \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
   -DBUILD_SHARED_LIBS=OFF \
@@ -94,7 +101,8 @@ cmake -S "$FREETYPE_SOURCE" -B "$FREETYPE_BUILD" \
   -DFT_DISABLE_PNG=TRUE \
   -DFT_DISABLE_HARFBUZZ=TRUE \
   -DFT_DISABLE_BROTLI=TRUE \
-  -DFT_DISABLE_HVF=TRUE
+  -DFT_DISABLE_HVF=TRUE \
+  "${FREETYPE_CMAKE_ARGS[@]}"
 cmake --build "$FREETYPE_BUILD" --target install --parallel "$JOBS"
 
 (
