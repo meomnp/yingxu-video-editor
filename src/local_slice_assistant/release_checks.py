@@ -18,7 +18,7 @@ def validate_ffmpeg_text(license_text: str, buildconf: str, encoders: str, targe
 
     if target not in {"windows", "macos"}:
         raise ReleaseCheckError("目标平台必须是 windows 或 macos。")
-    combined_license = license_text.casefold()
+    combined_license = " ".join(license_text.casefold().split())
     if (re.search(r"gnu general public license|(?<![\w-])gpl(?:-|\s|$)", combined_license)
             or re.search(r"--enable-(?:gpl|nonfree)\b", buildconf, re.IGNORECASE)
             or re.search(r"--enable-libx26[45]\b", buildconf, re.IGNORECASE)):
@@ -58,12 +58,12 @@ def validate_portable_ffmpeg(target: str, ffmpeg: str | Path, ffprobe: str | Pat
     for binary in (ffmpeg_path, ffprobe_path):
         if not binary.is_file():
             raise ReleaseCheckError(f"找不到媒体工具：{binary}")
-    license_text = _run(ffmpeg_path, "-hide_banner", "-L")
+    license_text = _run(ffmpeg_path, "-L")
     buildconf = _run(ffmpeg_path, "-hide_banner", "-buildconf")
     encoders = _run(ffmpeg_path, "-hide_banner", "-encoders")
     # ffprobe prints its license through its banner handler; -hide_banner
     # suppresses -L too. Do not mistake empty output for an unknown license.
-    probe_license = _run(ffprobe_path, "-L")
+    probe_license = " ".join(_run(ffprobe_path, "-L").split())
     if re.search(r"gnu general public license|(?<![\w-])gpl(?:-|\s|$)|--enable-nonfree|--enable-gpl",
                  probe_license, re.IGNORECASE):
         raise ReleaseCheckError("ffprobe 检测到 GPL/nonfree 许可证标记；拒绝打包。")

@@ -1,6 +1,9 @@
 import unittest
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
 
-from local_slice_assistant.release_checks import ReleaseCheckError, validate_ffmpeg_text
+from local_slice_assistant.release_checks import ReleaseCheckError, validate_ffmpeg_text, validate_portable_ffmpeg
 
 
 class ReleaseFFmpegChecksTests(unittest.TestCase):
@@ -37,6 +40,18 @@ class ReleaseFFmpegChecksTests(unittest.TestCase):
             "configuration: --disable-gpl --disable-nonfree\nGNU Lesser General Public License",
             "--disable-gpl --disable-nonfree --enable-libfreetype --enable-libharfbuzz --enable-videotoolbox",
             "h264_videotoolbox", "macos")
+
+    def test_real_lgpl21_wrapping_and_disabled_flags_for_both_tools(self):
+        text = ("configuration: --disable-gpl --disable-nonfree\n"
+                "modify it under the terms of the GNU Lesser General Public\n"
+                "License as published by the Free Software Foundation; either\n"
+                "version 2.1 of the License, or (at your option) any later version.")
+        config = "--disable-gpl --disable-nonfree --enable-libfreetype --enable-libharfbuzz --enable-videotoolbox"
+        with tempfile.TemporaryDirectory() as folder:
+            binary = Path(folder) / 'media-tool'
+            binary.touch()
+            with patch('local_slice_assistant.release_checks._run', side_effect=[text, config, 'h264_videotoolbox', text]):
+                validate_portable_ffmpeg('macos', binary, binary)
 
 
 if __name__ == "__main__":
