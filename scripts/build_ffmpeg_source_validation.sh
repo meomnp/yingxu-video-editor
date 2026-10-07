@@ -81,12 +81,14 @@ if [[ "$TARGET" == windows ]]; then
   # Run inside MSYS2 UCRT64 so both configure scripts detect the native
   # MinGW-w64 toolchain. Static-link its runtime into the standalone tools.
   FFMPEG_CONFIGURE+=(--extra-ldexeflags=-static)
-  # The FFmpeg binary is a native Windows executable. Passing an MSYS path
-  # through its filter parser leaves it as /c/... instead of a usable path.
+  # The FFmpeg binary is native Windows. Use a native path and escape its
+  # drive-letter colon for the drawtext filter's colon-delimited options.
   FONTFILE="$(cygpath -am /c/Windows/Fonts/arial.ttf)"
+  FILTER_FONTFILE="${FONTFILE//:/\\:}"
 else
   X264_CONFIGURE+=(--enable-pic)
   FONTFILE="/System/Library/Fonts/Supplemental/Arial.ttf"
+  FILTER_FONTFILE="$FONTFILE"
 fi
 test -f "$FONTFILE"
 
@@ -161,7 +163,7 @@ test -x "$FFPROBE"
 "$FFMPEG" -hide_banner -encoders | grep -Eq '[[:space:]]libx264[[:space:]]'
 "$FFMPEG" -hide_banner -loglevel error \
   -f lavfi -i 'testsrc2=size=1280x720:rate=25:duration=2' \
-  -an -vf "drawtext=fontfile='$FONTFILE':text='Yingxu':fontsize=32:fontcolor=white:x=10:y=10" \
+  -an -vf "drawtext=fontfile='$FILTER_FONTFILE':text='Yingxu':fontsize=32:fontcolor=white:x=10:y=10" \
   -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p \
   -y "$BUILD_ROOT/smoke.mp4"
 "$FFPROBE" -v error -select_streams v:0 \
