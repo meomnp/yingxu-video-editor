@@ -25,12 +25,34 @@ not cleared for public redistribution. The FFmpeg build configurations can be
 different from one release to another; do not infer codec support or licensing
 from the application source alone. See [FFmpeg legal considerations](https://ffmpeg.org/legal.html).
 
-The app also bundles Qt for Python (PySide6/Qt). Qt for Python Community Edition
-uses LGPLv3/GPLv3 licensing; individual Qt components and third-party code can
-have additional terms. Exact bundled Qt module versions, license texts, notices,
-and source/relinking materials still need a package-level audit before public
-distribution. See [Qt for Python licenses](https://doc.qt.io/qtforpython-6/licenses.html)
-and [Qt licensing](https://doc.qt.io/qt-6/licensing.html).
+The app also bundles Qt for Python (PySide6/Qt). The Windows and macOS
+candidates inspected here were built with PySide6 6.11.2 / Qt 6.11.2. The
+Windows package contains the PySide bindings `QtCore`, `QtGui`, `QtMultimedia`,
+`QtMultimediaWidgets`, `QtNetwork`, and `QtWidgets`; macOS additionally contains
+`QtDBus`. Both packages include Qt runtime libraries and plugins. In
+particular, their multimedia plugins (`ffmpegmediaplugin.dll` and
+`libffmpegmediaplugin.dylib`) use separately bundled Qt FFmpeg runtime libraries
+(including Windows `avcodec-61.dll` and macOS `libavcodec.61.dylib`,
+`libavformat.61.dylib`, `libavutil.59.dylib`, `libswresample.5.dylib`, and
+`libswscale.8.dylib`). These are distinct from the standalone FFmpeg/ffprobe
+executables described above and need their own exact version, license, notice,
+and corresponding-source review. Other Qt runtime libraries/plugins are
+present in the frozen packages and have not yet all been mapped to application
+imports.
+
+The PySide6 Community Edition wheels declare LGPL-3.0-only OR GPL-2.0-only OR
+GPL-3.0-only. The wheel metadata in the build environment supplied only a Qt
+commercial-license reference file, not a complete redistribution compliance
+set. Qt's published documentation says licenses can differ by module and
+third-party component. Exact per-platform modules, third-party notices, Qt
+Multimedia's bundled FFmpeg provenance, license texts, source materials, and
+the practical replacement/relink path for the frozen application still need
+package-level review before public distribution. The upstream Qt 6.11.2 source
+archive is available from [Qt's official download archive](https://download.qt.io/archive/qt/6.11/6.11.2/single/),
+but merely linking that general archive does not establish that every packaged
+binary and embedded third-party component is covered. See [Qt for Python
+licenses](https://doc.qt.io/qtforpython-6/licenses.html), [Qt licensing](https://doc.qt.io/qt-6/licensing.html),
+and the [Qt Multimedia licensing documentation](https://doc.qt.io/qt-6/qtmultimedia-index.html).
 
 ## Source-only repository
 
