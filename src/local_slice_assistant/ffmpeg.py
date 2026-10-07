@@ -43,11 +43,14 @@ def _binary(name: str) -> str:
     custom = os.environ.get(f"LOCAL_SLICE_{name.upper()}")
     candidates: list[str | None] = [custom, shutil.which(name)]
     if getattr(sys, "frozen", False):
-        # PyInstaller 6 onedir releases keep add-binary files under _internal;
-        # older layouts use the executable directory. Support both.
-        bundle_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
-        candidates.append(os.fspath(bundle_dir / f"{name}.exe"))
-        candidates.append(os.fspath(Path(sys.executable).resolve().parent / f"{name}.exe"))
+        # PyInstaller 6 onedir releases keep add-binary files under the runtime
+        # directory; macOS uses an extensionless executable while Windows uses
+        # .exe. Older Windows layouts keep binaries beside the launcher.
+        runtime_dir = getattr(sys, "_MEIPASS", None)
+        bundle_dir = Path(runtime_dir) if runtime_dir else Path(sys.executable).resolve().parent
+        executable_name = f"{name}.exe" if os.name == "nt" else name
+        candidates.append(os.fspath(bundle_dir / executable_name))
+        candidates.append(os.fspath(Path(sys.executable).resolve().parent / executable_name))
     candidate = next((item for item in candidates if item and Path(item).is_file()), None)
     if not candidate:
         raise MediaProbeError(

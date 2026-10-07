@@ -125,6 +125,24 @@ class ExportContractTests(unittest.TestCase):
         ):
             self.assertEqual(ffmpeg_binary(), str(bundled))
 
+    def test_frozen_posix_runtime_uses_extensionless_bundled_ffmpeg(self) -> None:
+        bundle = self.root / "_internal"
+        bundle.mkdir()
+        bundled = bundle / "ffmpeg"
+        bundled.write_bytes(b"fixture")
+        import local_slice_assistant.ffmpeg as ffmpeg_module
+        from types import SimpleNamespace
+
+        with (
+            patch.object(ffmpeg_module, "os", SimpleNamespace(
+                name="posix", environ=ffmpeg_module.os.environ, fspath=ffmpeg_module.os.fspath
+            )),
+            patch.object(ffmpeg_module.shutil, "which", return_value=None),
+            patch.object(ffmpeg_module.sys, "frozen", True, create=True),
+            patch.object(ffmpeg_module.sys, "_MEIPASS", str(bundle), create=True),
+        ):
+            self.assertEqual(ffmpeg_binary(), str(bundled))
+
     def test_default_export_is_numbered_and_explicit_existing_file_never_encodes(self):
         output = default_export_path(self.document)
         output.write_bytes(b"previous export")
