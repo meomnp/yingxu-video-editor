@@ -93,7 +93,8 @@ $ffmpegBuild
     $zip = Join-Path $repoRoot "dist\映序-Windows-x64-便携测试候选-$stamp.zip"
     Compress-Archive -Path $bundle -DestinationPath $zip -CompressionLevel Optimal
     $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-    Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $([System.IO.Path]::GetFileName($zip))" -Encoding ascii
+    $checksumLine = "$hash  $([System.IO.Path]::GetFileName($zip))`r`n"
+    [System.IO.File]::WriteAllText("$zip.sha256", $checksumLine, [System.Text.UTF8Encoding]::new($false))
     $size = [math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)
     Write-Host "Windows candidate ready: $zip ($size MiB)"
     Write-Host "SHA-256: $hash"
