@@ -31,13 +31,26 @@ fi
 python -m PyInstaller "${args[@]}"
 
 APP="$ROOT/dist/映序.app"
-FFMPEG_IN_APP="$APP/Contents/Frameworks/_internal/ffmpeg"
-FFPROBE_IN_APP="$APP/Contents/Frameworks/_internal/ffprobe"
-LIBS="$APP/Contents/Frameworks/libs"
+FFMPEG_IN_APP="$(find "$APP/Contents" -type f -name ffmpeg -print -quit)"
+FFPROBE_IN_APP="$(find "$APP/Contents" -type f -name ffprobe -print -quit)"
 
 test -d "$APP"
-test -x "$FFMPEG_IN_APP"
-test -x "$FFPROBE_IN_APP"
+if [[ -z "$FFMPEG_IN_APP" || ! -x "$FFMPEG_IN_APP" ]]; then
+  echo "Could not locate executable ffmpeg inside $APP" >&2
+  find "$APP/Contents" -maxdepth 5 -type f -print >&2
+  exit 1
+fi
+if [[ -z "$FFPROBE_IN_APP" || ! -x "$FFPROBE_IN_APP" ]]; then
+  echo "Could not locate executable ffprobe inside $APP" >&2
+  find "$APP/Contents" -maxdepth 5 -type f -print >&2
+  exit 1
+fi
+if [[ "$(dirname "$FFMPEG_IN_APP")" != "$(dirname "$FFPROBE_IN_APP")" ]]; then
+  echo "Packaged ffmpeg and ffprobe are not in the same directory." >&2
+  printf 'ffmpeg: %s\nffprobe: %s\n' "$FFMPEG_IN_APP" "$FFPROBE_IN_APP" >&2
+  exit 1
+fi
+LIBS="$(dirname "$FFMPEG_IN_APP")/libs"
 
 # Homebrew FFmpeg links to non-system dylibs. Bundle their dependency closure
 # beside the app binaries and rewrite load paths for an isolated app bundle.
@@ -45,7 +58,7 @@ test -x "$FFPROBE_IN_APP"
   -x "$FFMPEG_IN_APP" \
   -x "$FFPROBE_IN_APP" \
   -d "$LIBS" \
-  -p "@executable_path/../libs/"
+  -p "@executable_path/libs/"
 
 # Verify the relocated executables resolve without relying on the build PATH.
 env -u DYLD_LIBRARY_PATH "$FFMPEG_IN_APP" -hide_banner -version >/dev/null
