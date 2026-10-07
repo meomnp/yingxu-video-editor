@@ -246,7 +246,8 @@ class ApiPlanningDialogTests(unittest.TestCase):
             self.wait(lambda: self.dialog.worker is None)
         self.assertEqual(send.call_count, 1)
         self.assertNotIn("unit-test-secret", self.dialog.status.text())
-        self.assertIn("本次未完成", self.dialog.status.text())
+        self.assertIn("未获得可用的完整结果", self.dialog.status.text())
+        self.assertIn("不会自动重试", self.dialog.status.text())
         self.assertEqual(self.dialog.design.toPlainText(), "保留此设计")
         self.assertIsNone(self.dialog.candidate)
 

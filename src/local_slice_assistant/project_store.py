@@ -35,7 +35,11 @@ class LoadedProject:
 def default_project_path(media_root: str | Path, drama: str) -> Path:
     root = resolve_media_root(media_root)
     safe_title = re.sub(r'[<>:"/\\\\|?*\\x00-\\x1f]+', "_", drama).strip(" ._")
-    return root / ".local_slice_assistant" / f"{safe_title or '未命名工程'}{PROJECT_SUFFIX}"
+    safe_root = re.sub(r'[<>:"/\\\\|?*\\x00-\\x1f]+', "_", root.name).strip(" ._")
+    return (
+        root.parent / "映序项目" / f"{safe_root or '未命名素材'}" / "工程"
+        / f"{safe_title or '未命名工程'}{PROJECT_SUFFIX}"
+    )
 
 
 def _check_project_path(path: str | Path) -> Path:
