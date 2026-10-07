@@ -61,12 +61,14 @@ try {
 '@
     Set-Content -LiteralPath (Join-Path $bundle '使用说明.txt') -Value $readme -Encoding utf8
     $revision = (& git -C $repoRoot rev-parse HEAD).Trim()
+    $qtInfo = (& $python -c "import PySide6; from PySide6.QtCore import qVersion; print(f'PySide6 {PySide6.__version__}; Qt {qVersion()}')" 2>&1 | Out-String).Trim()
     $buildInfo = @(
         "Product: 映序 Windows x64 portable test candidate",
         "Source commit: $revision",
         "Built at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')",
         "Python: $(& $python --version 2>&1)",
-        "PyInstaller: $(& $python -m PyInstaller --version 2>&1)"
+        "PyInstaller: $(& $python -m PyInstaller --version 2>&1)",
+        "Qt for Python: $qtInfo"
     ) -join "`r`n"
     Set-Content -LiteralPath (Join-Path $bundle 'BUILD_INFO.txt') -Value $buildInfo -Encoding utf8
     $ffmpegLicense = (& $ffmpeg -L 2>&1 | Out-String).Trim()

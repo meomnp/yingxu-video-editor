@@ -61,8 +61,13 @@ class ProviderConfig:
     api_key: str = field(repr=False)
     timeout_seconds: float = 120.0
     max_request_bytes: int = 4 * 1024 * 1024
-    max_response_bytes: int = 8 * 1024 * 1024
-    max_output_tokens: int = 8192
+    # Leave room for very long completions when a provider permits a large
+    # max_tokens value (DeepSeek currently accepts 393,216). This is a local
+    # transport safety ceiling, not a token-generation cap.
+    max_response_bytes: int = 32 * 1024 * 1024
+    # None means use the provider's documented default policy: DeepSeek's
+    # current maximum, or 8K for generic OpenAI-compatible endpoints.
+    max_output_tokens: int | None = None
 
     def __post_init__(self) -> None:
         completion_url(self)
@@ -82,10 +87,14 @@ class ProviderConfig:
         if not math.isfinite(self.timeout_seconds) or not 0.1 <= self.timeout_seconds <= 600:
             raise ProviderConfigurationError("超时必须是 0.1 到 600 秒之间的数字。")
         for value, ceiling in ((self.max_request_bytes, 16 * 1024 * 1024),
-                               (self.max_response_bytes, 32 * 1024 * 1024),
-                               (self.max_output_tokens, 393216)):
+                               (self.max_response_bytes, 32 * 1024 * 1024)):
             if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= ceiling:
-                raise ProviderConfigurationError("请求、响应或输出长度上限无效。")
+                raise ProviderConfigurationError("请求或响应长度上限无效。")
+        if (self.max_output_tokens is not None
+                and (isinstance(self.max_output_tokens, bool)
+                     or not isinstance(self.max_output_tokens, int)
+                     or not 1 <= self.max_output_tokens <= 393216)):
+            raise ProviderConfigurationError("输出长度上限无效。")
 
 
 def completion_url(config: ProviderConfig) -> str:
@@ -152,13 +161,17 @@ def _payload(config: ProviderConfig, messages: Sequence[Mapping[str, str]]) -> b
         if not isinstance(message["content"], str) or not message["content"].strip():
             raise ProviderConfigurationError("分析消息必须包含非空纯文本。")
         copied.append({"role": message["role"], "content": message["content"]})
+    deepseek = (urlsplit(config.base_url).hostname or "").lower() == "api.deepseek.com"
+    output_limit = config.max_output_tokens
+    if output_limit is None:
+        output_limit = 393216 if deepseek else 8192
     request = {"model": config.model, "messages": copied, "stream": False,
-               "max_tokens": config.max_output_tokens}
+               "max_tokens": output_limit}
     # DeepSeek enables reasoning by default. In the failed requests all
     # completion tokens were reasoning_tokens and content was empty. Disable
     # reasoning only for the official DeepSeek endpoint; do not send this
     # provider-specific field to other OpenAI-compatible services.
-    if (urlsplit(config.base_url).hostname or "").lower() == "api.deepseek.com":
+    if deepseek:
         request["thinking"] = {"type": "disabled"}
     try:
         body = json.dumps(request, ensure_ascii=False).encode("utf-8")

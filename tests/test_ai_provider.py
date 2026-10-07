@@ -146,6 +146,12 @@ class ProviderConfigTests(unittest.TestCase):
 
 
 class ProviderRequestTests(unittest.TestCase):
+    def test_deepseek_defaults_to_official_maximum_not_8k(self):
+        config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key")
+        payload = json.loads(_payload(config, MESSAGES))
+        self.assertEqual(payload["max_tokens"], 393216)
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+
     def test_deepseek_disables_thinking_and_uses_configured_output_cap(self):
         config = ProviderConfig("https://api.deepseek.com", "deepseek-flash", "local-test-key",
                                 max_output_tokens=393216)

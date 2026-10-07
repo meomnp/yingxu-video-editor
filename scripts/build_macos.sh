@@ -77,6 +77,7 @@ cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$PACKAGE/"
   echo "Built at (UTC): $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
   python --version
   python -m PyInstaller --version
+  python -c 'import PySide6; from PySide6.QtCore import qVersion; print(f"Qt for Python: PySide6 {PySide6.__version__}; Qt {qVersion()}")'
 } > "$PACKAGE/BUILD_INFO.txt"
 cat >> "$PACKAGE/THIRD_PARTY_NOTICES.md" <<'NOTICES'
 
@@ -99,5 +100,7 @@ NOTICES
 
 OUT="$OUT_ROOT/映序-macOS-${ARCH}-便携测试候选.zip"
 ditto -c -k --sequesterRsrc --keepParent "$PACKAGE" "$OUT"
-shasum -a 256 "$OUT" | tee "$OUT.sha256"
+HASH="$(shasum -a 256 "$OUT" | awk '{print $1}')"
+printf '%s  %s\n' "$HASH" "$(basename "$OUT")" > "$OUT.sha256"
+cat "$OUT.sha256"
 echo "Built unsigned macOS candidate: $OUT"
