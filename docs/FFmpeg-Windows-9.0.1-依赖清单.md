@@ -1,7 +1,7 @@
 # Windows 候选包的 FFmpeg 依赖追溯清单
 
-核对日期：2026-10-07  
-对象：映序 Windows 候选包内 `ffmpeg.exe` / `ffprobe.exe`，对应 Gyan FFmpeg 9.0.1 full 静态构建。  
+核对日期：2026-10-07
+对象：映序 Windows 候选包内 `ffmpeg.exe` / `ffprobe.exe`，对应 Gyan FFmpeg 9.0.1 full 静态构建。
 上游发行页：[GyanD/codexffmpeg 9.0.1](https://github.com/GyanD/codexffmpeg/releases/tag/9.0.1)
 
 ## 上游包 README 已确认
