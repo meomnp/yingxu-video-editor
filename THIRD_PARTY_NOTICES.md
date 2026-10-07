@@ -10,8 +10,16 @@ bundle FFmpeg and ffprobe as separate local command-line programs. The candidate
 currently audited are GPL builds, not LGPL-only builds:
 
 - Windows: FFmpeg 9.0.1 Gyan “full” static build, GPLv3-or-later, with GPL
-  encoders including `libx264`. Its exact build configuration is recorded in
-  `FFMPEG_BUILD_INFO.txt` inside the candidate.
+  encoders including `libx264`. The packaged `ffmpeg.exe` and `ffprobe.exe`
+  SHA-256 hashes match the corresponding executables in Gyan's
+  `ffmpeg-9.0.1-full_build.zip` release asset. That upstream asset has SHA-256
+  `2e8e28af97c2ae338ccef92e36da9b2a4cd21d0cad9dde093545606cb07f5b00`, and its
+  README identifies FFmpeg source commit `bf1b838f2a`:
+  [Gyan FFmpeg 9.0.1 release](https://github.com/GyanD/codexffmpeg/releases/tag/9.0.1).
+  The exact build configuration is recorded in `FFMPEG_BUILD_INFO.txt` inside
+  the candidate. The upstream README lists enabled external libraries but not
+  their exact source revisions; corresponding-source materials for those
+  statically included libraries remain to be assembled.
 - macOS: FFmpeg 9.0.1_1 from Homebrew, GPL-3.0-or-later, configured with
   `--enable-gpl`, `--enable-libx264`, and `--enable-libx265`. The candidate
   bundles its non-system dynamic-library dependencies beside FFmpeg. The exact
@@ -32,13 +40,18 @@ Windows package contains the PySide bindings `QtCore`, `QtGui`, `QtMultimedia`,
 `QtDBus`. Both packages include Qt runtime libraries and plugins. In
 particular, their multimedia plugins (`ffmpegmediaplugin.dll` and
 `libffmpegmediaplugin.dylib`) use separately bundled Qt FFmpeg runtime libraries
-(including Windows `avcodec-61.dll` and macOS `libavcodec.61.dylib`,
+(Qt 6.11.2's official attribution identifies FFmpeg 7.1.3; the package contains
+Windows `avcodec-61.dll` and macOS `libavcodec.61.dylib`,
 `libavformat.61.dylib`, `libavutil.59.dylib`, `libswresample.5.dylib`, and
-`libswscale.8.dylib`). These are distinct from the standalone FFmpeg/ffprobe
-executables described above and need their own exact version, license, notice,
-and corresponding-source review. Other Qt runtime libraries/plugins are
-present in the frozen packages and have not yet all been mapped to application
-imports.
+`libswscale.8.dylib`). Qt's attribution page lists LGPL-2.1-or-later and BSD,
+ISC, MIT, and MPL-2.0 notices for this Qt FFmpeg build, and identifies the
+source subtree as `qtmultimedia/src/3rdparty/ffmpeg`. These are distinct from
+the standalone FFmpeg/ffprobe executables described above. Exact build flags,
+per-platform source snapshots, license texts, notices, and build/relink
+materials for this Qt-bundled copy still need to be matched to the shipped
+binaries. Other Qt runtime libraries/plugins are present in the frozen
+packages and have not yet all been mapped to application imports. See the
+[Qt 6.11.2 FFmpeg attribution](https://doc.qt.io/qt-6.11/qtmultimedia-attribution-ffmpeg.html).
 
 The PySide6 Community Edition wheels declare LGPL-3.0-only OR GPL-2.0-only OR
 GPL-3.0-only. The wheel metadata in the build environment supplied only a Qt
