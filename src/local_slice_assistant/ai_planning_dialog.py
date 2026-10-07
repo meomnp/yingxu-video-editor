@@ -282,6 +282,11 @@ class ApiPlanningDialog(QDialog):
         self.model.addItems(("deepseek-flash", "deepseek-v4-pro"))
         self.model.setCurrentText("deepseek-flash")
         self.model.setToolTip("可选 DeepSeek 官方模型，或直接输入其他兼容服务商的模型 ID；服务商地址仍可手动填写。")
+        self.other_max_output = QSpinBox()
+        self.other_max_output.setRange(1024, 393216)
+        self.other_max_output.setSingleStep(1024)
+        self.other_max_output.setValue(8192)
+        self.other_max_output.setToolTip("仅对其他兼容 API 生效；请先确认该模型支持的最大输出。服务商拒绝过高值时，调低后再试。")
         self.key = QLineEdit()
         self.key.setEchoMode(QLineEdit.EchoMode.Password)
         self.key.setPlaceholderText("仅本窗口内使用，关闭后清空，不保存到工程")
@@ -300,6 +305,8 @@ class ApiPlanningDialog(QDialog):
         self.narration.setChecked(bool(document.planning_context.get("include_narration", False)))
         form.addRow("API 基础地址", self.base_url)
         form.addRow("模型名称", self.model)
+        self.other_max_output_label = QLabel("其他兼容 API max_tokens")
+        form.addRow(self.other_max_output_label, self.other_max_output)
         form.addRow("API 密钥", self.key)
         form.addRow("剪辑目标", self.objective)
         form.addRow("本次 API 切片条数（最多 2）", self.cut_count)
@@ -350,6 +357,8 @@ class ApiPlanningDialog(QDialog):
         for edit in (self.base_url, self.key):
             edit.textChanged.connect(self.invalidate_candidate)
         self.model.currentTextChanged.connect(self.invalidate_candidate)
+        self.base_url.textChanged.connect(self._update_provider_controls)
+        self._update_provider_controls(self.base_url.text())
         self.objective.textChanged.connect(self.invalidate_package)
         self.cut_count.valueChanged.connect(self.invalidate_package)
         self.narration.toggled.connect(self.invalidate_package)
@@ -369,6 +378,11 @@ class ApiPlanningDialog(QDialog):
             return parent / "API请求历史.json"
         except (OSError, TypeError, ValueError):
             return None
+
+    def _update_provider_controls(self, base_url):
+        is_deepseek = (urlsplit(base_url.strip()).hostname or "").lower() == "api.deepseek.com"
+        self.other_max_output_label.setVisible(not is_deepseek)
+        self.other_max_output.setVisible(not is_deepseek)
 
     def _load_api_history(self):
         self.history_error = None
@@ -590,7 +604,7 @@ class ApiPlanningDialog(QDialog):
             is_deepseek = (urlsplit(base_url).hostname or "").lower() == "api.deepseek.com"
             config = ProviderConfig(base_url=base_url, model=self.model.currentText().strip(),
                                     api_key=self.key.text().strip(),
-                                    max_output_tokens=393216 if is_deepseek else 8192)
+                                    max_output_tokens=393216 if is_deepseek else self.other_max_output.value())
             messages = self.request_messages(stage)
             self.payload.setPlainText(json.dumps(messages, ensure_ascii=False, indent=2))
             summary = capacity_summary(self.package, messages)
@@ -762,7 +776,8 @@ class ApiPlanningDialog(QDialog):
         return (f"\nDeepSeek {model} 费用粗估（人民币；按输入缓存未命中）：输入约 {input_tokens:,} tokens，"
                 f"{output_basis}当前约 ¥{idle:.2f}（低谷）/ ¥{peak:.2f}（高峰）。"
                 f"同一批素材假设一次做10条、输入只发一次，参考约 ¥{ten_idle:.2f}/¥{ten_peak:.2f}；"
-                "本工具目前每次最多2条，拆成多次请求会重复发送输入，费用会更高。实际按服务商 usage、缓存命中和当时价格结算；仅作决定前参考。")
+                "本工具目前每次最多2条，拆成多次请求会重复发送输入，费用会更高。实际按服务商 usage、缓存命中和当时价格结算；仅作决定前参考。"
+                "费率截至 2026-10-07，发送前可核对 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/。")
 
     def _save_design_response(self, content):
         try:
