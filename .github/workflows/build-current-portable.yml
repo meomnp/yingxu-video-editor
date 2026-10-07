@@ -28,6 +28,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   windows:
+    if: false
     needs: prepare
     runs-on: windows-latest
     timeout-minutes: 90

@@ -61,7 +61,9 @@ def validate_portable_ffmpeg(target: str, ffmpeg: str | Path, ffprobe: str | Pat
     license_text = _run(ffmpeg_path, "-hide_banner", "-L")
     buildconf = _run(ffmpeg_path, "-hide_banner", "-buildconf")
     encoders = _run(ffmpeg_path, "-hide_banner", "-encoders")
-    probe_license = _run(ffprobe_path, "-hide_banner", "-L")
+    # ffprobe prints its license through its banner handler; -hide_banner
+    # suppresses -L too. Do not mistake empty output for an unknown license.
+    probe_license = _run(ffprobe_path, "-L")
     if re.search(r"gnu general public license|(?<!l)\bgpl(?:-|\s|$)|--enable-nonfree",
                  probe_license, re.IGNORECASE):
         raise ReleaseCheckError("ffprobe 检测到 GPL/nonfree 许可证标记；拒绝打包。")
