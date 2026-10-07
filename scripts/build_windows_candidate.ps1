@@ -1,9 +1,13 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$FfmpegPath,
     [Parameter(Mandatory = $true)][string]$FfprobePath,
     [switch]$Console
 )
 $ErrorActionPreference = 'Stop'
+
+if ($env:YINGXU_LICENSE_AUDIT_CONFIRMED -ne '1') {
+    throw 'Packaging blocked: complete the package-level third-party source/license audit first. Set YINGXU_LICENSE_AUDIT_CONFIRMED=1 only after the release gate in docs/发行状态.md is satisfied.'
+}
 
 $repoRoot = [System.IO.Directory]::GetParent($PSScriptRoot).FullName
 $python = (Get-Command python -ErrorAction Stop).Source
@@ -51,14 +55,14 @@ try {
     foreach ($file in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
         Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $bundle
     }
-    $readme = @'
-映序 Windows 便携测试候选版
-
-适用环境：Windows 10/11 x64。解压后运行“映序.exe”，无需安装 Python 或下载源码。
-此包为内部测试候选版，不代表已在所有 Windows 设备完成验收，请勿作为公开发行版转发。处理视频时请先备份工程与素材。
-
-第三方许可：本程序源码采用 MIT License；随包 FFmpeg/ffprobe 为独立的 GPLv3-or-later 构建，Qt 等组件也各受其自身许可约束，详见 THIRD_PARTY_NOTICES.md 和 FFMPEG_BUILD_INFO.txt。此候选版的对应源码材料仍在核验，公开分发前必须补齐。
-'@
+    $readme = @(
+        '映序 Windows 便携测试候选版',
+        '',
+        '适用环境：Windows 10/11 x64。解压后运行“映序.exe”，无需安装 Python 或下载源码。',
+        '此包为内部测试候选版，不代表已在所有 Windows 设备完成验收，请勿作为公开发行版转发。处理视频时请先备份工程与素材。',
+        '',
+        '第三方许可：本程序源码采用 MIT License；随包 FFmpeg/ffprobe 为独立的 GPLv3-or-later 构建，Qt 等组件也各受其自身许可约束，详见 THIRD_PARTY_NOTICES.md 和 FFMPEG_BUILD_INFO.txt。此候选版的对应源码材料仍在核验，公开分发前必须补齐。'
+    ) -join "`r`n"
     Set-Content -LiteralPath (Join-Path $bundle '使用说明.txt') -Value $readme -Encoding utf8
     $revision = (& git -C $repoRoot rev-parse HEAD).Trim()
     $qtInfo = (& $python -c "import PySide6; from PySide6.QtCore import qVersion; print(f'PySide6 {PySide6.__version__}; Qt {qVersion()}')" 2>&1 | Out-String).Trim()
@@ -73,14 +77,14 @@ try {
     Set-Content -LiteralPath (Join-Path $bundle 'BUILD_INFO.txt') -Value $buildInfo -Encoding utf8
     $ffmpegLicense = (& $ffmpeg -L 2>&1 | Out-String).Trim()
     $ffmpegBuild = (& $ffmpeg -buildconf 2>&1 | Out-String).Trim()
-    $ffmpegInfo = @"
-Packaged FFmpeg build details
-License declaration from ffmpeg -L:
-$ffmpegLicense
-
-Build configuration:
-$ffmpegBuild
-"@
+    $ffmpegInfo = @(
+        'Packaged FFmpeg build details',
+        'License declaration from ffmpeg -L:',
+        $ffmpegLicense,
+        '',
+        'Build configuration:',
+        $ffmpegBuild
+    ) -join "`r`n"
     Set-Content -LiteralPath (Join-Path $bundle 'FFMPEG_BUILD_INFO.txt') -Value $ffmpegInfo -Encoding utf8
 
     $previousQtPlatform = $env:QT_QPA_PLATFORM

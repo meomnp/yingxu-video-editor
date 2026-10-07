@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${YINGXU_LICENSE_AUDIT_CONFIRMED:-}" != "1" ]]; then
+  echo "Packaging blocked: complete the package-level third-party source/license audit first." >&2
+  echo "Set YINGXU_LICENSE_AUDIT_CONFIRMED=1 only after the release gate in docs/发行状态.md is satisfied." >&2
+  exit 3
+fi
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 

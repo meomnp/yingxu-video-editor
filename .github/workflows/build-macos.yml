@@ -2,18 +2,21 @@ name: Build macOS portable candidate
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    # Avoid rebuilding the same candidate for every follow-up/doc-only push.
-    # Use workflow_dispatch for an intentional refresh after code changes.
-    types: [opened, reopened]
+    inputs:
+      redistribution_audit_confirmed:
+        description: Confirm the exact bundled third-party source/license audit is complete
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   build-macos:
+    # No artifact is produced until the maintainer explicitly confirms that the
+    # package-level redistribution audit is complete.
+    if: ${{ inputs.redistribution_audit_confirmed == true }}
     # The repository is public, so standard GitHub-hosted macOS runners are free.
     # Build only Apple Silicon for this first candidate; do not notarize or sign.
     runs-on: macos-15
@@ -35,6 +38,8 @@ jobs:
           python -m pip install -e . pyinstaller
 
       - name: Build and smoke-test portable app
+        env:
+          YINGXU_LICENSE_AUDIT_CONFIRMED: "1"
         run: bash scripts/build_macos.sh
 
       - name: Keep artifact within free storage allowance
