@@ -36,10 +36,9 @@ jobs:
             diffutils
             pkgconf
             cmake
-            meson
-            ninja
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-meson
 
       - name: Build pinned FFmpeg + x264 + FreeType and run encode/filter/probe smoke test
         shell: msys2 {0}
