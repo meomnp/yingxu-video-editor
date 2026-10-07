@@ -69,6 +69,18 @@ and the [Qt Multimedia licensing documentation](https://doc.qt.io/qt-6/qtmultime
 
 ## Source-only repository
 
+The inspected older candidates also contain unused Qt Virtual Keyboard
+artifacts. Qt documents this module as GPLv3 or commercial-only, not LGPL;
+the old candidates are not cleared for redistribution. The app source does not
+import or enable Qt Virtual Keyboard. The Windows and macOS candidate build
+scripts now exclude its PySide module and run
+`scripts/prune_qt_virtualkeyboard.py` to remove the module libraries, plugins,
+and framework payloads before the packaged startup smoke test. The exclusion
+has passed unit fixtures and a startup smoke test on a temporary copy of the
+old Windows candidate; fresh Windows and macOS application bundles still need
+to be built and inspected to verify no dependent artifacts remain. See [Qt
+Virtual Keyboard licensing](https://doc.qt.io/qt-6/qtvirtualkeyboard-index.html).
+
 The Git repository itself does not contain the FFmpeg binaries. Optional local
 vision, speech, separation, and model runtimes are not bundled or promised. If
 installed separately, each runtime and model retains its own license and

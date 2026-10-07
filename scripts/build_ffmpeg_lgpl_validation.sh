@@ -74,7 +74,10 @@ FFMPEG_CONFIGURE=(
 if [[ "$TARGET" == windows ]]; then
   # This runner executes in MSYS2 UCRT64. Media Foundation is provided by the
   # Windows host; no GPL software encoder is linked into the FFmpeg binary.
-  FFMPEG_CONFIGURE+=(--enable-mediafoundation --extra-ldexeflags=-static)
+  # FFmpeg's Media Foundation video encoder includes D3D11 frame support in
+  # mfenc.c, so the D3D11VA headers/config must be enabled even when the smoke
+  # test itself feeds ordinary software frames.
+  FFMPEG_CONFIGURE+=(--enable-mediafoundation --enable-d3d11va --extra-ldexeflags=-static)
   FONTFILE="$(cygpath -am /c/Windows/Fonts/arial.ttf)"
   FILTER_FONTFILE="${FONTFILE//:/\\:}"
 else

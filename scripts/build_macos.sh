@@ -22,6 +22,7 @@ OUT_ROOT="$ROOT/dist"
 
 args=(
   --noconfirm --clean --windowed --onedir
+  --exclude-module "PySide6.QtVirtualKeyboard"
   --name "映序"
   --osx-bundle-identifier "com.meomnp.yingxu"
   --paths "$ROOT/src"
@@ -37,6 +38,7 @@ fi
 python -m PyInstaller "${args[@]}"
 
 APP="$ROOT/dist/映序.app"
+python "$ROOT/scripts/prune_qt_virtualkeyboard.py" "$APP/Contents"
 FFMPEG_IN_APP="$(find "$APP/Contents" -type f -name ffmpeg -print -quit)"
 FFPROBE_IN_APP="$(find "$APP/Contents" -type f -name ffprobe -print -quit)"
 

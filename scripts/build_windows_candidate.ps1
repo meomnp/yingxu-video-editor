@@ -31,6 +31,7 @@ Push-Location -LiteralPath $repoRoot
 try {
     $pyInstallerArgs = @(
         '--noconfirm', '--clean', $(if ($Console) { '--console' } else { '--windowed' }), '--onedir',
+        '--exclude-module', 'PySide6.QtVirtualKeyboard',
         '--name', '映序', '--icon', (Join-Path $repoRoot 'assets\branding\local-slice-v2.ico'),
         '--paths', (Join-Path $repoRoot 'src'), '--distpath', $distRoot, '--workpath', $workRoot, '--specpath', $workRoot,
         '--add-binary', "$ffmpeg;.", '--add-binary', "$ffprobe;.",
@@ -44,6 +45,9 @@ try {
     }
     & $python -m PyInstaller @pyInstallerArgs
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
+
+    & $python (Join-Path $repoRoot 'scripts\prune_qt_virtualkeyboard.py') (Join-Path $bundle '_internal\PySide6')
+    if ($LASTEXITCODE -ne 0) { throw 'Refusing candidate: GPLv3-only Qt Virtual Keyboard artifacts could not be excluded.' }
 
     # The host PATH contains Poppler ICU DLLs that are ABI-incompatible with Qt.
     # The project's established Windows spec excludes these incidental copies.
