@@ -881,7 +881,8 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         from .batches import ensure_batch, safe_name
         folder = ensure_batch(document)
         self.project_path = folder / '工程' / f'{safe_name(document.drama)}.localcut.json'
-        self.batch_label.setText(f"当前批次：{folder.name} · AI材料 / 工程 / 成片各自存放")
+        self.batch_label.setText(f"当前批次：{folder.name} · 保存在素材文件夹旁边")
+        self.batch_label.setToolTip(f"批次位置：{folder}\nAI材料、工程和成片分别保存在此批次的子文件夹。")
         return folder
 
     def new_batch_dialog(self):
@@ -1068,7 +1069,11 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
     def _refresh_workflow(self) -> None:
         if hasattr(self, 'batch_label'):
             batch = self.document.planning_context.get('batch', {}) if self.document else {}
-            self.batch_label.setText(f"当前批次：{batch['name']} · AI材料 / 工程 / 成片各自存放" if batch else '尚未建立批次 · 首次导出AI任务包时自动建立；旧文件不移动')
+            self.batch_label.setText(f"当前批次：{batch['name']} · 保存在素材文件夹旁边" if batch else '尚未建立批次 · 首次导出AI任务包时自动建立；旧文件不移动')
+            self.batch_label.setToolTip(
+                f"批次位置：{batch.get('directory', '')}\nAI材料、工程和成片分别保存在此批次的子文件夹。"
+                if batch else '新批次会建立在所选素材文件夹的同级“映序项目”目录中。'
+            )
         document = self.document
         self._refresh_preview_notice()
         ready = document is not None
@@ -1438,7 +1443,9 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         self.root_label.setText(document.media_root)
         self.refresh()
         self._set_status(
-            f"已按文件名顺序载入 {len(document.sources)} 个视频；可分割、删除、拖动重排和补衔接，原视频只读。"
+            f"已按文件名顺序载入 {len(document.sources)} 个视频；旧版‘映序项目’目录里的成片已排除。"
+            f"工程默认保存在素材文件夹同级的“映序项目”目录：{default_project_path(document.media_root, document.drama)}。"
+            "新批次和导出也在该同级目录，不写回素材文件夹；可分割、删除、拖动重排和补衔接，原视频只读。"
         )
 
     def import_video_dialog(self) -> None:
@@ -1637,7 +1644,8 @@ class MainWindow(ProjectSessionMixin, QMainWindow):
         self.root_label.setText(document.media_root)
         self.refresh()
         self._set_status(
-            "现成视频已作为一条完整切片载入；可预览、导入对应台词、配音包装并保存工程。原视频不会被修改。"
+            f"现成视频已作为一条完整切片载入；工程默认保存在视频文件夹同级的“映序项目”目录：{self.project_path}。"
+            "可预览、导入对应台词、配音包装并保存工程；原视频不会被修改。"
         )
 
     def select_media_root(self) -> None:

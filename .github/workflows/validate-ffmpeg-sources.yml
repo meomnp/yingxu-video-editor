@@ -1,0 +1,60 @@
+name: Validate pinned LGPL FFmpeg source builds
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/validate-ffmpeg-sources.yml
+      - scripts/build_ffmpeg_lgpl_validation.sh
+      - scripts/build_ffmpeg_source_validation.sh
+  workflow_dispatch:
+    inputs:
+      run_validation:
+        description: Build FFmpeg, FreeType, and HarfBuzz from pinned source; test native platform H.264 encoding; no app package or artifact is published
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate-windows:
+    if: github.event_name == 'pull_request' || inputs.run_validation == true
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out 映序 source
+        uses: actions/checkout@v4
+
+      - name: Set up free MSYS2 UCRT64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            diffutils
+            pkgconf
+            cmake
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-meson
+
+      - name: Build LGPL FFmpeg + FreeType + HarfBuzz; test Media Foundation, text filter, and ffprobe
+        shell: msys2 {0}
+        run: bash scripts/build_ffmpeg_lgpl_validation.sh windows
+
+  validate-macos:
+    if: github.event_name == 'pull_request' || inputs.run_validation == true
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Check out 映序 source
+        uses: actions/checkout@v4
+
+      - name: Install NASM from the free runner package manager
+        run: brew install nasm cmake meson ninja
+
+      - name: Build LGPL FFmpeg + FreeType + HarfBuzz; test VideoToolbox, text filter, and ffprobe
+        run: bash scripts/build_ffmpeg_lgpl_validation.sh macos

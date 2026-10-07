@@ -9,10 +9,16 @@ def safe_name(value):
 
 def create_batch(document):
     root = Path(document.media_root).resolve()
-    parent = root / '映序项目'
+    projects_root = root.parent / '映序项目'
+    projects_root.mkdir(exist_ok=True)
+    if projects_root.resolve().parent != root.parent.resolve():
+        raise ValueError('项目目录不能通过链接离开素材上级目录。')
+    # Keep each selected source folder's jobs together, but outside the recursive
+    # media scan root so generated MP4s can never be re-imported as source clips.
+    parent = projects_root / safe_name(root.name)
     parent.mkdir(exist_ok=True)
-    if parent.resolve().parent != root:
-        raise ValueError('批次目录不能通过链接离开素材目录。')
+    if parent.resolve().parent != projects_root.resolve():
+        raise ValueError('素材对应的项目目录不能通过链接离开映序项目目录。')
     ledger = parent / '.批次编号'
     ledger.mkdir(exist_ok=True)
     if ledger.resolve().parent != parent.resolve():

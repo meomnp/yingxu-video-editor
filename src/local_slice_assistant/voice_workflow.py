@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QMessageBox,
@@ -49,6 +50,13 @@ class VoiceWorkflowDialog(QDialog):
         QApplication.clipboard().setText(SAMPLE_TEXT)
 
     def open_studio(self):
+        if sys.platform != "win32":
+            QMessageBox.information(
+                self,
+                "声音工作台暂不可启动",
+                "本地声音工作台启动器目前仅支持 Windows。你仍可使用其他配音软件生成音频，再通过“导入生成的配音”手动导入 WAV。",
+            )
+            return
         if not VOICE_LAUNCHER.is_file():
             QMessageBox.warning(self, "声音工作台未安装", f"没有找到本机入口：\n{VOICE_LAUNCHER}\n仍可使用其他配音软件生成 WAV 后导入。")
             return

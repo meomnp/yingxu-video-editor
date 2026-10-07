@@ -61,6 +61,9 @@ class ManifestAndProjectTests(unittest.TestCase):
         self.assertEqual(reopened.active_cut.segments[0].source_file, "19.mp4")
 
     def test_manual_folder_loads_multiple_videos_without_json(self) -> None:
+        legacy_export = self.root / "映序项目" / "剧名_第001批" / "成片" / "01.mp4"
+        legacy_export.parent.mkdir(parents=True)
+        legacy_export.write_bytes(b"old generated video")
         with patched_probe():
             document = create_project_from_folder(self.root)
             files = [segment.source_file for segment in document.active_cut.segments]

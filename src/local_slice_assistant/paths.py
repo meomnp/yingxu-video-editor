@@ -14,6 +14,7 @@ MEDIA_SUFFIXES = {".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm"}
 DEFAULT_EXCLUDED_DIR_NAMES = {
     "本地切片助手导出",
     "映序导出",
+    "映序项目",
     ".local_slice_assistant",
     "outputs",
     "output",

@@ -1,0 +1,63 @@
+name: Build macOS portable candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      redistribution_audit_confirmed:
+        description: Confirm the exact bundled third-party source/license audit is complete
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    # No artifact is produced until the maintainer explicitly confirms that the
+    # package-level redistribution audit is complete.
+    if: ${{ inputs.redistribution_audit_confirmed == true }}
+    # The repository is public, so standard GitHub-hosted macOS runners are free.
+    # Build only Apple Silicon for this first candidate; do not notarize or sign.
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tools and FFmpeg
+        run: |
+          brew install ffmpeg dylibbundler
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+
+      - name: Build and smoke-test portable app
+        env:
+          YINGXU_LICENSE_AUDIT_CONFIRMED: "1"
+        run: bash scripts/build_macos.sh
+
+      - name: Keep artifact within free storage allowance
+        run: |
+          bytes="$(stat -f%z dist/映序-macOS-arm64-便携测试候选.zip)"
+          limit=$((450 * 1024 * 1024))
+          echo "Candidate artifact size: $bytes bytes; upload guard: $limit bytes"
+          if [ "$bytes" -gt "$limit" ]; then
+            echo "Not uploading: artifact exceeds the 450 MiB safety cap."
+            exit 1
+          fi
+
+      - name: Upload one-day candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yingxu-macos-arm64-unsigned
+          path: |
+            dist/映序-macOS-arm64-便携测试候选.zip
+            dist/映序-macOS-arm64-便携测试候选.zip.sha256
+          if-no-files-found: error
+          retention-days: 1

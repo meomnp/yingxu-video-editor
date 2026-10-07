@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -30,12 +31,15 @@ def read_timecode(image, *, check_cancel=None) -> str:
     from PySide6.QtGui import QImage
     if image.isNull() or image.width() < 20 or image.height() < 6:
         raise TimecodeReadError('时间码读取框太小。')
+    if sys.platform != 'win32':
+        raise TimecodeReadError('画面时间码 OCR 目前仅支持 Windows；可继续手动输入或使用带时间戳的字幕文件。')
     # Enlarge the native pixels for the local OCR engine, without reinterpreting
     # the timestamp or deriving it from screen coordinates.
     prepared = image.convertToFormat(QImage.Format.Format_Grayscale8)
     prepared.invertPixels()
     prepared = prepared.scaledToHeight(100, Qt.TransformationMode.SmoothTransformation)
-    script = Path(__file__).resolve().parents[2] / 'scripts' / 'read_timecode_windows.ps1'
+    bundle_root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[2]))
+    script = bundle_root / 'scripts' / 'read_timecode_windows.ps1'
     with tempfile.TemporaryDirectory(prefix='jianying_timecode_') as directory:
         path = Path(directory) / 'timecode.png'
         if not prepared.save(str(path)):
